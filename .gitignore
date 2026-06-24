@@ -1,0 +1,28 @@
+# sbt / Scala
+target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+metals.sbt
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Build / logs
+*.log
+
+# Secrets — never commit keys
+*.pem
+*.key
+*.p12
+*.jks
+
+# Internal / business-strategy notes — never publish (see docs/STRATEGY.private.md)
+*.private.md
