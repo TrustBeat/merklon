@@ -45,6 +45,33 @@ it on.
 8. **Witnessing:** a witness verifies consistency between checkpoints and co-signs; clients require N
    witness sigs. Defeats split-view/equivocation. The hard, prestigious part.
 
+### Actors & deployment shapes
+
+A transparency log exists because these roles **don't trust each other** — verification is what
+substitutes for trust. The core is designed so each role can do its job with the minimum it needs.
+
+| Actor | Who | What they do | Needs |
+|---|---|---|---|
+| **Log operator** | Whoever runs an instance (platform team, issuing service, internal infra) | Accepts entries, sequences them into the tree, publishes signed checkpoints. | A running server + storage. |
+| **Submitter / writer** | Systems producing records worth making tamper-evident (cert issuers, build/release pipelines, event sources) | Append an entry; receive an inclusion proof. | Network access to the serving API. |
+| **Verifier / monitor** | Anyone — auditors, clients, third parties | Fetch a checkpoint + proofs and verify inclusion + consistency **without trusting the operator**. | The checkpoint, the proofs, and the log's public key. **No DB, no server trust.** |
+| **Witness** *(Phase 3)* | Independent co-signers | Verify each new checkpoint is consistent with the prior one and co-sign; clients can require N signatures to defeat split-view/equivocation. | The checkpoint stream + their own key. |
+
+Three deployment shapes follow from this, each with different infrastructure needs:
+
+- **As a library (the pure core).** Embed the Merkle core + proofs directly; pure functions over
+  bytes — **no I/O, no database, no framework.** Useful for building proofs into another system.
+- **As a running log (operator).** Server + sequencer + storage behind the `StorageBackend`
+  interface. Default is **PostgreSQL**, but the interface anticipates a **tile-based / static-file
+  backend** ("tlog-tiles / Sunlight" model) so a log can be served as cheap static files with **no
+  database at all**. So storage is required to operate a log, but the *kind* is pluggable.
+- **As a verifier (library + CLI).** Consumes checkpoints and proofs over HTTP and verifies them
+  locally. **Never needs a database and never trusts the server** — this is the whole value
+  proposition, and the single best credibility artifact.
+
+In short: **library use → no DB; operating a log → storage required but pluggable (Postgres default,
+static-file/tiled possible); verifying → no DB, no trust.**
+
 ### Extension points (design in now)
 
 The core stays generic; downstream applications attach behavior through these hooks instead of
