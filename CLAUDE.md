@@ -5,7 +5,7 @@ override default behavior — follow them.
 
 ## What this is
 **merklon** is a verifiable, append-only **transparency log**: a tamper-evident Merkle log
-(RFC 6962 style) with inclusion and consistency proofs that anyone can verify *without
+(RFC 9162 style) with inclusion and consistency proofs that anyone can verify *without
 trusting the server*. Open source, Apache-2.0, © Trustbeat s.r.o.
 
 Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md` (in progress).
@@ -15,8 +15,10 @@ Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md` (i
   useless. Prefer clarity and provable correctness over cleverness or micro-optimization.
 - **Don't trust — verify.** Every proof must be checkable by an *independent verifier* that
   shares none of the server's trust assumptions. Keep verification logic free of server state.
-- **Conform to standards.** Hashing and proofs follow **RFC 6962**. Where a standard defines
-  test vectors, pin tests to those vectors rather than hand-rolled expectations.
+- **Conform to standards.** Hashing and proofs follow **RFC 9162** (Certificate Transparency 2.0,
+  which obsoletes RFC 6962; the Merkle tree is unchanged between them). Where a standard defines
+  test vectors, pin tests to those vectors rather than hand-rolled expectations — the canonical
+  RFC 6962 reference tree vectors remain valid under RFC 9162.
 - **Never invent crypto primitives.** Use the JDK and vetted libraries (Bouncy Castle for
   ASN.1 / RFC 3161). We implement *protocols and data structures*, never new ciphers/hashes.
 - **The core stays pure and dependency-light.** The Merkle core has no I/O, no frameworks, no
@@ -60,8 +62,8 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
 - **License hygiene:** Apache-2.0 only; do not add dependencies under incompatible licenses.
 
 ## Roadmap (build order — see DESIGN.md for "done" criteria)
-0. **Merkle core** — hashing + inclusion/consistency proofs + RFC 6962 vectors *(in progress)*.
-1. **Persistence + checkpoints** — storage backend, Ed25519-signed checkpoints, sequencer.
+0. **Merkle core** — hashing + inclusion/consistency proofs + RFC 6962 vectors *(done)*.
+1. **Persistence + checkpoints** — storage backend, Ed25519-signed checkpoints, sequencer *(next)*.
 2. **Serving + verifier** — HTTP API + standalone independent verifier (library + CLI).
 3. **Witnessing** — N-of-M co-signing; split-view detection.
 4. **Pluggable attestation** — RFC 3161 qualified timestamps + offline proof bundles.
@@ -69,7 +71,7 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
 ## Gotchas (Scala 3 / crypto)
 - **Byte-array equality:** never `==` on `Array[Byte]` — compare hex (`toHex`) or use
   `java.util.Arrays.equals`.
-- **RFC 6962 split point** `k` = largest power of two **strictly less than** `n`
+- **RFC 9162 split point** `k` = largest power of two **strictly less than** `n`
   (`Integer.highestOneBit(n - 1)`).
 - **ASN.1/DER (once the RFC 3161 attestor lands):** build with `ASN1EncodableVector` then
   `.getEncoded()`; `DERSequence(Array(...))` fails on array invariance.

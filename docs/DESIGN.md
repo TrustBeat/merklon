@@ -31,7 +31,7 @@ application**. That's what makes it spread on merit. Extension value is invisibl
 it on.
 
 ### Core components (Layer 1)
-1. **Merkle log (heart):** RFC 6962 hashing (`leaf = H(0x00‖data)`, `node = H(0x01‖L‖R)`), append, root.
+1. **Merkle log (heart):** RFC 9162 hashing (`leaf = H(0x00‖data)`, `node = H(0x01‖L‖R)`), append, root.
 2. **Proofs:** inclusion (audit path) + **consistency** (tree size N1 is a prefix of N2 → append-only,
    no history rewrite). The cryptographic soul.
 3. **Checkpoints:** signed note format (origin, tree size, root hash, signature(s)); Ed25519 log key.
@@ -140,7 +140,7 @@ Two options:
   don't want to redo.
 
 ## 3. Reference points
-- RFC 6962 (Certificate Transparency) — Merkle log hashing, inclusion/consistency proofs
+- RFC 9162 (Certificate Transparency 2.0; obsoletes RFC 6962) — Merkle log hashing, inclusion/consistency proofs
 - Trillian (general verifiable log), Sigstore Rekor (transparency log + supply chain)
 - "tlog-tiles" / Sunlight (Filippo Valsorda / Let's Encrypt) — static-file tile-based modern CT log
 - `golang.org/x/mod/sumdb/tlog` — Go checksum DB transparency log (clean reference)

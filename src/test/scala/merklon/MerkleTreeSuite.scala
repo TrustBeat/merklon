@@ -1,3 +1,6 @@
+// Copyright 2026 Trustbeat s.r.o.
+// SPDX-License-Identifier: Apache-2.0
+
 package merklon
 
 class MerkleTreeSuite extends munit.FunSuite:

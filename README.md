@@ -17,8 +17,8 @@ cryptographic guarantee that the log is **append-only** — entries can be added
 history can never be silently rewritten — and lets independent parties **verify**
 that guarantee for themselves.
 
-The design follows the model proven by Certificate Transparency (RFC 6962),
-Sigstore's Rekor, and the Go checksum database:
+The design follows the model proven by Certificate Transparency (RFC 9162,
+which obsoletes RFC 6962), Sigstore's Rekor, and the Go checksum database:
 
 - **Inclusion proofs** — prove a specific entry is in the log.
 - **Consistency proofs** — prove the log at size *N₁* is a prefix of the log at
@@ -30,8 +30,9 @@ Sigstore's Rekor, and the Go checksum database:
 ## Don't trust — verify
 
 Correctness *is* the product. merklon ships an **independent verifier** (library + CLI)
-that checks every proof against the math, and a test suite pinned to known
-**RFC 6962** vectors. If the verifier disagrees with the server, the server is wrong.
+that checks every proof against the math, and a test suite pinned to the canonical
+**RFC 6962** reference vectors (unchanged under RFC 9162). If the verifier disagrees
+with the server, the server is wrong.
 
 ## Status
 
@@ -54,7 +55,7 @@ println(MerkleTree.toHex(root))
 
 ## Roadmap
 
-- **Phase 0 — Merkle core** *(in progress)*: leaf/node hashing, Merkle Tree Hash,
+- **Phase 0 — Merkle core** *(done)*: leaf/node hashing, Merkle Tree Hash,
   inclusion + consistency proofs, RFC 6962 test vectors.
 - **Phase 1 — Persistence + checkpoints**: storage backend, Ed25519-signed checkpoints,
   a sequencer that batches entries on a cadence.

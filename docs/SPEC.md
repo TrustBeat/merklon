@@ -3,7 +3,7 @@
 > **Status: DRAFT / in progress.** Nail these formats before implementing Phase 1+ — they are
 > expensive to change once real data exists. This file is the home for the "spec-first" step.
 
-## 1. Hashing (RFC 6962)
+## 1. Hashing (RFC 9162 §2.1.1)
 - Leaf hash: `SHA-256(0x00 || data)`
 - Interior node hash: `SHA-256(0x01 || left || right)`
 - Empty tree (MTH of `{}`): `SHA-256("")`
@@ -23,11 +23,11 @@ checkpoint / Go signed-note format, so existing witnesses/tooling interoperate.
 
 ## 3. Inclusion proof
 - **TODO:** encoding of `{ leaf_index, tree_size, audit_path[] }` and the verification
-  algorithm (RFC 6962 §2.1.1).
+  algorithm (RFC 9162 §2.1.3.2).
 
 ## 4. Consistency proof
 - **TODO:** encoding of `{ size1, size2, proof_path[] }` and the verification algorithm
-  (RFC 6962 §2.1.2). This is what proves append-only.
+  (RFC 9162 §2.1.4.2). This is what proves append-only.
 
 ## 5. HTTP API (Phase 2)
 - **TODO:** confirm shapes:
@@ -42,7 +42,7 @@ checkpoint / Go signed-note format, so existing witnesses/tooling interoperate.
   qualified_timestamp }` that the CLI verifier checks fully offline.
 
 ## References
-- RFC 6962 (Certificate Transparency)
+- RFC 9162 (Certificate Transparency 2.0; obsoletes RFC 6962)
 - transparency.dev — checkpoint (signed note) & witness specs
 - tlog-tiles / Sunlight (static-file tile model)
 - `golang.org/x/mod/sumdb/tlog` (Go checksum DB)
