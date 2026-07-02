@@ -177,6 +177,55 @@ object MerkleTree:
             sn >>= 1
         ok && sn == 0 && Arrays.equals(fr, firstRoot) && Arrays.equals(sr, secondRoot)
 
+  // ---------------------------------------------------------------------------
+  // *FromHashes variants — work on pre-computed leaf hashes
+  //
+  // Storage keeps leafHash(data) rather than raw data, so the sequencer uses
+  // these instead of re-applying leafHash a second time.
+  // ---------------------------------------------------------------------------
+
+  /** Root from pre-computed leaf hashes; does NOT re-apply leafHash. */
+  def rootFromHashes(leafHashes: List[Array[Byte]]): Array[Byte] =
+    leafHashes match
+      case Nil           => sha256(Array.emptyByteArray)
+      case single :: Nil => single
+      case _ =>
+        val n = leafHashes.length
+        val k = Integer.highestOneBit(n - 1)
+        val (l, r) = leafHashes.splitAt(k)
+        nodeHash(rootFromHashes(l), rootFromHashes(r))
+
+  /** Inclusion proof from pre-computed leaf hashes. */
+  def inclusionProofFromHashes(index: Int, leafHashes: List[Array[Byte]]): List[Array[Byte]] =
+    val n = leafHashes.length
+    require(index >= 0 && index < n, s"index $index out of range for tree of size $n")
+    if n == 1 then Nil
+    else
+      val k = Integer.highestOneBit(n - 1)
+      val (l, r) = leafHashes.splitAt(k)
+      if index < k then inclusionProofFromHashes(index, l) :+ rootFromHashes(r)
+      else inclusionProofFromHashes(index - k, r) :+ rootFromHashes(l)
+
+  /** Consistency proof from pre-computed leaf hashes. */
+  def consistencyProofFromHashes(first: Int, leafHashes: List[Array[Byte]]): List[Array[Byte]] =
+    val n = leafHashes.length
+    require(first >= 0 && first <= n, s"first $first out of range for tree of size $n")
+    if first == 0 || first == n then Nil
+    else subProofFromHashes(first, leafHashes, b = true)
+
+  private def subProofFromHashes(
+      m: Int,
+      leafHashes: List[Array[Byte]],
+      b: Boolean
+  ): List[Array[Byte]] =
+    val n = leafHashes.length
+    if m == n then if b then Nil else List(rootFromHashes(leafHashes))
+    else
+      val k = Integer.highestOneBit(n - 1)
+      val (l, r) = leafHashes.splitAt(k)
+      if m <= k then subProofFromHashes(m, l, b) :+ rootFromHashes(r)
+      else subProofFromHashes(m - k, r, b = false) :+ rootFromHashes(l)
+
   /** Lower-case hex encoding of a byte array. */
   def toHex(bytes: Array[Byte]): String =
     val sb = new StringBuilder(bytes.length * 2)

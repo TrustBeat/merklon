@@ -17,3 +17,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and fork-rejection coverage.
 - Developer tooling: `CLAUDE.md` (agent guidance), scalafmt + `.editorconfig`,
   `.claude/settings.json`, and `docs/DESIGN.md` / `docs/SPEC.md` (draft).
+- Verifier CLI: `consistency OLD_SIZE OLD_ROOT_HEX` command — verifies the latest
+  checkpoint is an append-only extension of a previously trusted (size, root), so the
+  CLI now exposes all three independent-verification operations (checkpoint signature,
+  inclusion, consistency).
+- Phase 1: persistence + checkpoints — `StorageBackend` interface with in-memory
+  implementation, Ed25519 `CheckpointAttestor`, c2sp.org/tlog-checkpoint signed-note
+  `Checkpoint` rendering, and the `Sequencer` (append → integrate → publish checkpoint).
+  Extension interfaces `LeafCodec` and `AppendAuthorizer` with default implementations.
+- Phase 2: serving + independent verifier — ZIO HTTP server (`POST /entries`,
+  `GET /checkpoint`, `GET /proof/inclusion`, `GET /proof/consistency`) and a standalone
+  verifier (library + JDK-HTTP client + note/proof parsers + CLI) that shares no state
+  with the server.
+- Multi-module build: split into `modules/core` (pure, dependency-free),
+  `modules/storage-pg`, `modules/server` (ZIO HTTP), and `modules/verifier`.
+- Durable log identity: `LogKeyStore` persists the operator's Ed25519 key as
+  openssl-compatible PEM files (`log.key` PKCS#8 0600, `log.pub` SPKI) with a
+  sign/verify pair check at load; wired via `MERKLON_KEY_DIR` (ephemeral key + warning
+  without it), so checkpoints verify across restarts.
+- Postgres `StorageBackend` (`merklon-storage-pg`): plain-JDBC backend with
+  advisory-locked contiguous index assignment and append-only checkpoint persistence
+  (a shrinking `tree_size` is refused at the storage layer). Server selects it via
+  `MERKLON_DB_URL` / `MERKLON_DB_USER` / `MERKLON_DB_PASSWORD`. Integration suite runs
+  against a dockerized `postgres:16`, including the Phase 1 "done" bar: 100k entries
+  appended across 4 simulated process restarts with every checkpoint chain verified by
+  consistency proofs (skipped automatically when Docker is unavailable).
+- Phase 3 witnessing (core): `Witness` verifies the log signature and append-only
+  consistency from its last cosigned checkpoint before cosigning; refusals carry
+  transferable evidence (`SplitView` = two same-size, different-root checkpoints signed
+  by the same log key). `WitnessPolicy` implements the client-side N-of-M distinct
+  trusted cosigner check. Split-view, history-rewrite, forged-cosignature, and N-of-M
+  tests included. (Witness *service*/distribution is still to come.)
+- Core `Ed25519.verify` over raw 32-byte keys and public `CheckpointNote.keyId`
+  (signed-note key-ID formula), now shared by the attestor, witness, policy, and
+  verifier instead of duplicated.
+
+### Fixed
+- Server integration test: replaced the fixed `Thread.sleep` startup wait with an active
+  port-readiness poll, removing a race where the first request could beat the server's bind.

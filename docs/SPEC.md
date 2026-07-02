@@ -177,7 +177,47 @@ Notes / TODO:
 - **TODO:** error model (status codes + JSON error body), pagination limits, and whether
   `tree_size` defaults to the latest checkpoint when omitted.
 
-## 7. Proof bundle (offline-verifiable, Phase 4)
+## 7. Witnessing (Phase 3)
+
+A **witness** is an independent party that attests to the log's *consistency over time*. It
+defeats split-view attacks: a log that shows different histories to different observers cannot
+get both histories cosigned by the same honest witness.
+
+### 7.1 Witness behavior
+
+For each observed checkpoint, a witness MUST, in order:
+
+1. Check the checkpoint's `origin` is the one it watches; otherwise refuse.
+2. Verify at least one signature on the note verifies under the log's public key (§3.2);
+   otherwise refuse.
+3. Compare against the last checkpoint it cosigned for this origin:
+   - **First observation:** cosign (trust-on-first-use — the witness's attestation window
+     starts here).
+   - **Same `tree_size`:** the root hashes MUST be identical; a differing root is a
+     **split view** and MUST be refused.
+   - **Larger `tree_size`:** the log supplies an RFC 9162 consistency proof from the cosigned
+     size; the witness verifies it (§5.2) and refuses a failure as a **history rewrite**.
+   - **Smaller `tree_size`:** refuse — a transparency log never shrinks.
+4. On success, sign the exact note body bytes (§3.2) with its own Ed25519 key and return the
+   signature line. The log appends witness signature lines to the same note after its own.
+
+A refusal for split view or history rewrite yields **transferable evidence of log misbehavior**:
+two conflicting checkpoints, each carrying a valid signature from the same log key. Implemented
+by `merklon.Witness` (refusals: `merklon.WitnessRefusal`).
+
+### 7.2 Client policy (N-of-M)
+
+A client configures M trusted witnesses (key name + raw Ed25519 public key) and a threshold N.
+A checkpoint satisfies the policy when at least **N distinct** trusted witnesses have a valid
+signature line on it: for each signature line, the client matches `key_id` (§3.2) against each
+trusted witness and verifies the Ed25519 signature over the note body. Duplicate lines from one
+witness count once; unknown or unverifiable lines are ignored (consistent with §3.1 tolerance).
+Implemented by `merklon.WitnessPolicy`.
+
+**TODO:** witness state durability requirements, the checkpoint-distribution protocol
+(how logs submit to witnesses — likely c2sp.org/tlog-witness), and cosigned-checkpoint caching.
+
+## 8. Proof bundle (offline-verifiable, Phase 4)
 
 A self-contained artifact a relying party verifies **fully offline** with the CLI verifier:
 
@@ -193,7 +233,7 @@ A self-contained artifact a relying party verifies **fully offline** with the CL
 - **TODO:** concrete container encoding (single JSON document vs. a small archive) and the exact
   field names / base64 conventions.
 
-## 8. Versioning
+## 9. Versioning
 
 - This spec is versioned with the repository and tracked in `CHANGELOG.md`.
 - Wire-format-breaking changes MUST bump a documented format version before any production data

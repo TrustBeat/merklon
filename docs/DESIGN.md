@@ -101,15 +101,18 @@ Checkpoint { tree_size, root_hash, signed_at,
 
 ### Build order (each phase ends in something verifiable)
 - **Phase 0 — Merkle core.** Append, root, inclusion + consistency proofs. *Done when:* passes known
-  RFC 6962 / Go-tlog test vectors; CLI verifier confirms.
+  RFC 6962 / Go-tlog test vectors; CLI verifier confirms. ✅ **done**
 - **Phase 1 — Persistence + checkpoints.** Postgres `StorageBackend`; Ed25519-signed checkpoints;
   sequencer batching on a cadence. *Done when:* append 100k entries across restarts, every checkpoint
-  chains consistently.
+  chains consistently. ✅ **done** (Postgres backend + durable Ed25519 log key; 100k-across-restarts
+  integration test in `merklon-storage-pg`; timed batching cadence still pending)
 - **Phase 2 — Serving + independent verifier.** HTTP API + standalone verifier library/CLI.
   *Done when:* a client that never trusts the server can fetch a checkpoint and verify any entry's
-  inclusion + the log's consistency.
+  inclusion + the log's consistency. ✅ **done**
 - **Phase 3 — Witnessing.** Witness service + N-of-M cosigning; client policy requiring witness sigs.
   *Done when:* a deliberately equivocating log (split-view test) is detected. *Hard, respected milestone.*
+  🔶 **core done** (`Witness` + `WitnessPolicy` + split-view detection tests; the witness *service* —
+  durable state, checkpoint distribution, HTTP — still to come)
 - **Phase 4 — Extension hooks (cheap wins only).** Wire `CheckpointAttestor` → qualified TS; `LeafCodec`
   structured-event default codec; `ProofBundle` export. *Done when:* export an offline evidence bundle
   for an event, sealed with a qualified timestamp, verify it with the CLI offline.

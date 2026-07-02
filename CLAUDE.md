@@ -38,17 +38,22 @@ Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md` (i
 - **scalafmt** for formatting (`sbt scalafmtAll`; CI gates on `scalafmtCheckAll`).
 - Outer layers later: ZIO / ZIO HTTP, Bouncy Castle, PostgreSQL — kept out of the pure core.
 
-## Repo layout
-- `src/main/scala/merklon/` — library code (package `merklon`)
-- `src/test/scala/merklon/` — tests (standard vectors live here)
+## Repo layout (multi-module sbt build)
+- `modules/core/` — pure Merkle core: hashing, proofs, checkpoints, sequencer, witnessing,
+  extension interfaces (package `merklon`; no dependencies, no I/O)
+- `modules/storage-pg/` — Postgres `StorageBackend` (plain JDBC; package `merklon.storage.pg`)
+- `modules/server/` — ZIO HTTP log server + key store (package `merklon.server`)
+- `modules/verifier/` — independent verifier library + CLI (package `merklon.verifier`)
+- Standard test vectors live in `modules/core/src/test/scala/merklon/`
 - `docs/DESIGN.md` — public architecture, scope, roadmap (business strategy split out to the
   gitignored `docs/STRATEGY.private.md` — never publish that file)
-- `docs/SPEC.md` — wire formats: checkpoint note, proofs, API (draft)
+- `docs/SPEC.md` — wire formats: checkpoint note, proofs, witnessing, API (draft)
 
 ## Commands
 ```bash
 sbt compile
-sbt test               # includes RFC 6962 vector checks
+sbt test               # includes RFC 6962 vector checks; storage-pg tests need Docker
+                       # (postgres:16-alpine) and skip themselves without it
 sbt scalafmtAll        # format the codebase
 sbt scalafmtCheckAll   # verify formatting (CI gate)
 ```
@@ -63,9 +68,11 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
 
 ## Roadmap (build order — see DESIGN.md for "done" criteria)
 0. **Merkle core** — hashing + inclusion/consistency proofs + RFC 6962 vectors *(done)*.
-1. **Persistence + checkpoints** — storage backend, Ed25519-signed checkpoints, sequencer *(next)*.
-2. **Serving + verifier** — HTTP API + standalone independent verifier (library + CLI).
-3. **Witnessing** — N-of-M co-signing; split-view detection.
+1. **Persistence + checkpoints** — Postgres backend, Ed25519-signed checkpoints, durable log
+   key, sequencer *(done; timed batching cadence pending)*.
+2. **Serving + verifier** — HTTP API + standalone independent verifier (library + CLI) *(done)*.
+3. **Witnessing** — N-of-M co-signing; split-view detection *(core done: `Witness`,
+   `WitnessPolicy`, split-view tests; witness service/distribution next)*.
 4. **Pluggable attestation** — RFC 3161 qualified timestamps + offline proof bundles.
 
 ## Gotchas (Scala 3 / crypto)
