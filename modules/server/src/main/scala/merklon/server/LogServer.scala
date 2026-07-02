@@ -13,12 +13,21 @@ import java.util.Base64
   *
   * POST /entries appends and immediately publishes a checkpoint so the proof endpoints work without
   * delay. A production deployment would batch entries on a timed cadence instead.
+  *
+  * When witnesses are configured, each published checkpoint is submitted to all of them and the
+  * collected cosignatures are appended to the stored (and served) note. Witness failures are
+  * logged, never fatal: availability of the log must not depend on any single witness — clients
+  * enforce their own N-of-M policy.
   */
 object LogServer:
 
   private val B64 = Base64.getEncoder
 
-  def make(sequencer: Sequencer, storage: StorageBackend): Routes[Any, Nothing] =
+  def make(
+      sequencer: Sequencer,
+      storage: StorageBackend,
+      witnesses: Seq[WitnessClient] = Nil
+  ): Routes[Any, Nothing] =
     Routes(
       // POST /entries — append entry, publish checkpoint, return {"leaf_index":N,"tree_size":M}.
       Method.POST / "entries" ->
@@ -27,6 +36,7 @@ object LogServer:
             data <- req.body.asArray
             idx <- ZIO.attempt(sequencer.append(data))
             cp <- ZIO.attempt(sequencer.publishCheckpoint())
+            _ <- gatherCosignatures(cp, storage, witnesses)
           yield Response.json(s"""{"leaf_index":$idx,"tree_size":${cp.treeSize}}"""))
             .catchAll(e => ZIO.succeed(Response.badRequest(e.getMessage)))
         },
@@ -93,3 +103,34 @@ object LogServer:
             .catchAll(e => ZIO.succeed(Response.badRequest(e.getMessage)))
         }
     )
+
+  /** Submit `cp` to every configured witness; append the cosignatures that came back and re-persist
+    * so GET /checkpoint serves the cosigned note. Best-effort by design.
+    */
+  private def gatherCosignatures(
+      cp: Checkpoint,
+      storage: StorageBackend,
+      witnesses: Seq[WitnessClient]
+  ): ZIO[Any, Nothing, Unit] =
+    if witnesses.isEmpty then ZIO.unit
+    else
+      val proofFrom: Long => List[Array[Byte]] = old =>
+        MerkleTree.consistencyProofFromHashes(
+          old.toInt,
+          storage.leafHashes(0L, cp.treeSize).toList
+        )
+      ZIO
+        .foreach(witnesses) { w =>
+          ZIO.attemptBlocking(w.submit(cp, proofFrom)).flatMap {
+            case Right(sig) => ZIO.succeed(Some(sig))
+            case Left(err)  => ZIO.logWarning(s"witness cosign failed: $err").as(None)
+          }
+        }
+        .flatMap { results =>
+          val cosigs = results.flatten
+          ZIO
+            .attempt(storage.saveCheckpoint(cp.copy(signatures = cp.signatures ++ cosigs)))
+            .when(cosigs.nonEmpty)
+            .unit
+        }
+        .catchAll(e => ZIO.logWarning(s"witness cosigning: ${e.getMessage}"))

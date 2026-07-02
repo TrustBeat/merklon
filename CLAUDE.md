@@ -71,8 +71,8 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
 1. **Persistence + checkpoints** — Postgres backend, Ed25519-signed checkpoints, durable log
    key, sequencer *(done; timed batching cadence pending)*.
 2. **Serving + verifier** — HTTP API + standalone independent verifier (library + CLI) *(done)*.
-3. **Witnessing** — N-of-M co-signing; split-view detection *(core done: `Witness`,
-   `WitnessPolicy`, split-view tests; witness service/distribution next)*.
+3. **Witnessing** — N-of-M co-signing; split-view detection *(done: c2sp tlog-witness HTTP
+   service + cosignature/v1 + durable state + log-side submission + CLI witness policy)*.
 4. **Pluggable attestation** — RFC 3161 qualified timestamps + offline proof bundles.
 
 ## Gotchas (Scala 3 / crypto)

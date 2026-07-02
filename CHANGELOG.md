@@ -51,6 +51,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core `Ed25519.verify` over raw 32-byte keys and public `CheckpointNote.keyId`
   (signed-note key-ID formula), now shared by the attestor, witness, policy, and
   verifier instead of duplicated.
+- Phase 3 complete — witness service and distribution:
+  - Witness cosignatures now conform to c2sp.org/tlog-cosignature **cosignature/v1**
+    (`merklon.CosignatureV1`): signed message `cosignature/v1\ntime <t>\n<note body>`,
+    key-ID type byte 0x04, blob `key_id || timestamp(8,BE) || ed25519_sig`, non-zero
+    timestamp enforced. `Witness` and `WitnessPolicy` updated accordingly.
+  - Witness HTTP service (`merklon.server.witness.WitnessServer` + `WitnessMain`)
+    implementing c2sp.org/tlog-witness `POST /add-checkpoint` with the spec's status
+    codes (200 cosignature line, 400/403/404, 409 + latest size as `text/x.tlog.size`,
+    422) and the `GET /<sha256(origin)>/checkpoint` monitoring endpoint.
+  - Durable witness state: `WitnessStateStore` seam in core (in-memory impl) and
+    `FileWitnessStateStore` (atomic writes, origin-hashed filenames, corrupt state
+    fails loudly instead of silently resetting to trust-on-first-use).
+  - Log-side submission: `WitnessClient` with 409 size negotiation, wired via
+    `MERKLON_WITNESSES`; collected cosignatures are appended to the stored and served
+    checkpoint note. End-to-end test: log + two witnesses, served note satisfies a
+    2-of-2 policy; split-view detection also covered over HTTP.
+  - Verifier CLI witness policy: `--witness NAME=HEX_PUBKEY` (repeatable) and
+    `--witness-threshold N` (default: all listed) enforced on every command.
+  - Checkpoint note parsing moved into core (`CheckpointNote.parse` /
+    `parseSignatureLine`); `merklon.verifier.CheckpointParser` delegates to it.
 
 ### Fixed
 - Server integration test: replaced the fixed `Thread.sleep` startup wait with an active

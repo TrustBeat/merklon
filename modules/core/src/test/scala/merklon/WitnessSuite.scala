@@ -53,10 +53,30 @@ class WitnessSuite extends munit.FunSuite:
     val sig2 = witness.observe(cp2, log.consistencyProofFrom(cp1.treeSize))
     assert(sig2.isRight, s"consistent extension must cosign, got $sig2")
 
-    // The cosignature is a valid signed-note signature over the checkpoint body.
-    val body = CheckpointNote.noteBody(cp2).getBytes("UTF-8")
-    assert(Ed25519.verify(witness.publicKey, body, sig2.toOption.get.sig))
+    // The cosignature is a valid cosignature/v1 over the checkpoint body.
+    val body = CheckpointNote.noteBody(cp2)
+    assert(CosignatureV1.verify(witness.name, witness.publicKey, body, sig2.toOption.get))
     assertEquals(witness.latestCosigned.map(_.treeSize), Some(cp2.treeSize))
+  }
+
+  test("witness state survives a restart via a shared durable store") {
+    val log = freshLog()
+    val store = InMemoryWitnessStateStore()
+    val wKeys = keyPair()
+    val w1 = Witness("witness.test/w1", wKeys, origin, log.attestor.publicKey, store)
+    log.append("a", "b", "c", "d")
+    assert(w1.observe(log.checkpoint(), Nil).isRight)
+
+    // "Restart": a fresh Witness over the same store must keep enforcing consistency,
+    // not fall back to trust-on-first-use.
+    val w2 = Witness("witness.test/w1", wKeys, origin, log.attestor.publicKey, store)
+    assertEquals(w2.latestCosigned.map(_.treeSize), Some(4L))
+    val forged = TestLog(log.attestor)
+    forged.append("a", "b", "X", "d")
+    assert(w2.observe(forged.checkpoint(), Nil) match
+      case Left(WitnessRefusal.SplitView(_, _)) => true
+      case _                                    => false
+    )
   }
 
   test("witness re-cosigns an identical checkpoint at the same size") {
@@ -202,11 +222,11 @@ class WitnessSuite extends munit.FunSuite:
 
     log.append("a")
     val cp = log.checkpoint()
-    // An attacker who doesn't hold w1's key fabricates a signature line with w1's name and ID.
+    // An attacker who doesn't hold w1's key fabricates a cosignature line with w1's name and ID.
     val forged = NoteSignature(
       w1.name,
-      CheckpointNote.keyId(w1.name, w1.publicKey),
-      Array.fill[Byte](64)(0x13)
+      CosignatureV1.keyId(w1.name, w1.publicKey),
+      Array.fill[Byte](72)(0x13)
     )
     val cpForged = cp.copy(signatures = cp.signatures :+ forged)
     assert(!WitnessPolicy.satisfied(cpForged, trusted, threshold = 1))

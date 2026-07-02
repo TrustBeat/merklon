@@ -86,7 +86,9 @@ one or more signature lines:
 - `ed25519_public_key` is 32 bytes (RFC 8032). `signature` is the 64-byte Ed25519 signature
   (RFC 8032) **over the exact note body bytes** (the text up to and including its final `\n`).
 - The **log** signs first (its `CheckpointAttestor`, default = the log Ed25519 key). Additional
-  signature lines carry **witness** co-signatures (Phase 3) and other attestors.
+  signature lines carry **witness** cosignatures and other attestors. Witness lines use the
+  cosignature/v1 format (§7.2), whose signed message and key-ID type byte differ from the plain
+  log signature described here.
 
 ### 3.3 Example
 
@@ -187,7 +189,7 @@ get both histories cosigned by the same honest witness.
 
 For each observed checkpoint, a witness MUST, in order:
 
-1. Check the checkpoint's `origin` is the one it watches; otherwise refuse.
+1. Check the checkpoint's `origin` is one it watches; otherwise refuse.
 2. Verify at least one signature on the note verifies under the log's public key (§3.2);
    otherwise refuse.
 3. Compare against the last checkpoint it cosigned for this origin:
@@ -198,24 +200,69 @@ For each observed checkpoint, a witness MUST, in order:
    - **Larger `tree_size`:** the log supplies an RFC 9162 consistency proof from the cosigned
      size; the witness verifies it (§5.2) and refuses a failure as a **history rewrite**.
    - **Smaller `tree_size`:** refuse — a transparency log never shrinks.
-4. On success, sign the exact note body bytes (§3.2) with its own Ed25519 key and return the
-   signature line. The log appends witness signature lines to the same note after its own.
+4. On success, produce a **cosignature/v1** (§7.2) and return its signature line. The log
+   appends witness signature lines to the same note after its own.
 
-A refusal for split view or history rewrite yields **transferable evidence of log misbehavior**:
-two conflicting checkpoints, each carrying a valid signature from the same log key. Implemented
-by `merklon.Witness` (refusals: `merklon.WitnessRefusal`).
+The witness's last-cosigned checkpoint MUST be durable; losing it silently resets the witness
+to trust-on-first-use and erases its consistency guarantee. A refusal for split view or history
+rewrite yields **transferable evidence of log misbehavior**: two conflicting checkpoints, each
+carrying a valid signature from the same log key. Implemented by `merklon.Witness` (refusals:
+`merklon.WitnessRefusal`; durable state: `merklon.WitnessStateStore`).
 
-### 7.2 Client policy (N-of-M)
+### 7.2 Cosignature format (c2sp.org/tlog-cosignature, "cosignature/v1")
+
+A witness does NOT sign the bare note body (that is the log's signature). The signed message is:
+
+```
+cosignature/v1
+time <unix seconds>
+<note body (§3.1), including its final newline>
+```
+
+The signature line's base64 blob is `key_id(4) || timestamp(8, big-endian) || ed25519_sig(64)`
+(76 bytes), and the key ID uses signature-type byte **0x04**:
+`SHA-256(key_name || 0x0A || 0x04 || ed25519_public_key)[:4]`. The timestamp MUST NOT be zero.
+Implemented by `merklon.CosignatureV1`.
+
+### 7.3 Witness HTTP protocol (c2sp.org/tlog-witness)
+
+`POST <prefix>/add-checkpoint`, request body (each line `\n`-terminated):
+
+```
+old <last cosigned tree size>
+<base64 consistency proof hash>     (0 to 63 lines)
+<empty line>
+<checkpoint signed note (§3)>
+```
+
+Responses:
+
+| Status | Meaning |
+|---|---|
+| 200 | Cosigned; body is the witness's cosignature line(s) (§7.2). |
+| 400 | Malformed request, or `old` exceeds the submitted checkpoint's size. |
+| 403 | No signature on the note verifies under the log's trusted key. |
+| 404 | The note's origin is not watched by this witness. |
+| 409 | `old` differs from the witness's latest cosigned size — body is that size (ASCII decimal + `\n`, `Content-Type: text/x.tlog.size`); the submitter retries with the returned size. Also returned for a same-size, different-root submission (split view). |
+| 422 | The consistency proof does not verify (history rewrite). |
+
+Monitoring: `GET <prefix>/<hex(SHA-256(origin))>/checkpoint` returns the latest cosigned note
+(log + witness signatures) or 404. Implemented by `merklon.server.witness.WitnessServer`
+(service) and `merklon.server.WitnessClient` (log-side submission with 409 size negotiation).
+
+**Deviations / TODO:** the c2sp spec's optional `sign-subtree` endpoint is not implemented;
+ML-DSA cosignatures (SHOULD in the spec) await JDK/BC support — merklon uses Ed25519
+cosignature/v1; notes with extension lines (§3.1) are currently refused by the witness because
+the body is reconstructed from parsed fields (fails closed).
+
+### 7.4 Client policy (N-of-M)
 
 A client configures M trusted witnesses (key name + raw Ed25519 public key) and a threshold N.
 A checkpoint satisfies the policy when at least **N distinct** trusted witnesses have a valid
-signature line on it: for each signature line, the client matches `key_id` (§3.2) against each
-trusted witness and verifies the Ed25519 signature over the note body. Duplicate lines from one
-witness count once; unknown or unverifiable lines are ignored (consistent with §3.1 tolerance).
-Implemented by `merklon.WitnessPolicy`.
-
-**TODO:** witness state durability requirements, the checkpoint-distribution protocol
-(how logs submit to witnesses — likely c2sp.org/tlog-witness), and cosigned-checkpoint caching.
+cosignature/v1 (§7.2) on it. Duplicate lines from one witness count once; unknown or
+unverifiable lines are ignored (consistent with §3.1 tolerance). Implemented by
+`merklon.WitnessPolicy`; exposed in the CLI verifier as
+`--witness NAME=HEX_PUBKEY … [--witness-threshold N]` (default threshold: all listed).
 
 ## 8. Proof bundle (offline-verifiable, Phase 4)
 

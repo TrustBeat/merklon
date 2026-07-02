@@ -111,8 +111,9 @@ Checkpoint { tree_size, root_hash, signed_at,
   inclusion + the log's consistency. ✅ **done**
 - **Phase 3 — Witnessing.** Witness service + N-of-M cosigning; client policy requiring witness sigs.
   *Done when:* a deliberately equivocating log (split-view test) is detected. *Hard, respected milestone.*
-  🔶 **core done** (`Witness` + `WitnessPolicy` + split-view detection tests; the witness *service* —
-  durable state, checkpoint distribution, HTTP — still to come)
+  ✅ **done** (c2sp.org/tlog-witness HTTP service with durable file state + cosignature/v1;
+  log-side submission with 409 size negotiation; N-of-M client policy in library + verifier CLI;
+  split-view detection tested at the core AND over HTTP with the spec's status codes)
 - **Phase 4 — Extension hooks (cheap wins only).** Wire `CheckpointAttestor` → qualified TS; `LeafCodec`
   structured-event default codec; `ProofBundle` export. *Done when:* export an offline evidence bundle
   for an event, sealed with a qualified timestamp, verify it with the CLI offline.

@@ -14,17 +14,24 @@ object Main extends ZIOAppDefault:
   private val port = sys.env.get("MERKLON_PORT").flatMap(_.toIntOption).getOrElse(8080)
   private val keyDir = sys.env.get("MERKLON_KEY_DIR")
   private val dbUrl = sys.env.get("MERKLON_DB_URL")
+  // Comma-separated witness base URLs; each published checkpoint is submitted to all of them.
+  private val witnessUrls =
+    sys.env.get("MERKLON_WITNESSES").toList.flatMap(_.split(',')).map(_.trim).filter(_.nonEmpty)
 
   override def run: ZIO[Any, Throwable, Nothing] =
     for
       attestor <- makeAttestor
       storage <- makeStorage
       seq = Sequencer(origin, storage, attestor)
+      witnesses = witnessUrls.map(WitnessClient(_))
       _ <- ZIO.logInfo(s"merklon log server")
       _ <- ZIO.logInfo(s"  origin:     $origin")
       _ <- ZIO.logInfo(s"  port:       $port")
       _ <- ZIO.logInfo(s"  public key: ${MerkleTree.toHex(attestor.publicKey)}")
-      exit <- Server.serve(LogServer.make(seq, storage)).provide(Server.defaultWithPort(port))
+      _ <- ZIO.foreachDiscard(witnessUrls)(u => ZIO.logInfo(s"  witness:    $u"))
+      exit <- Server
+        .serve(LogServer.make(seq, storage, witnesses))
+        .provide(Server.defaultWithPort(port))
     yield exit
 
   /** Postgres from MERKLON_DB_URL (+ MERKLON_DB_USER / MERKLON_DB_PASSWORD); without it, an
