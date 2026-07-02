@@ -6,8 +6,8 @@ package merklon
 /** Integrates entries into the Merkle log and publishes signed checkpoints.
   *
   * append adds an entry to storage; publishCheckpoint takes a consistent snapshot of the current
-  * tree, computes the root, signs a checkpoint note, persists it, and returns it. Time-based
-  * batching cadence is wired up by the outer layer (Phase 2, ZIO scheduler).
+  * tree, computes the root, signs a checkpoint note, persists it, and returns it. The timed
+  * batching cadence lives in the outer layer (`merklon.server.CheckpointPublisher`).
   */
 final class Sequencer(
     origin: String,

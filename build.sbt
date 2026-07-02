@@ -7,6 +7,9 @@ ThisBuild / organization := "eu.trustbeat"
 val zioVersion     = "2.1.24"
 val zioHttpVersion = "3.10.0"
 val munitVersion   = "1.0.0"
+// Bouncy Castle (MIT-style licence): ASN.1 + RFC 3161 timestamp protocol only —
+// never crypto primitives the JDK already provides.
+val bcVersion = "1.80"
 
 lazy val commonSettings = Seq(
   scalacOptions ++= Seq(
@@ -29,14 +32,15 @@ lazy val core = project
 // HTTP log server: ZIO + ZIO HTTP. Depends on core; keeps core pure.
 lazy val server = project
   .in(file("modules/server"))
-  .dependsOn(core, storagePg, verifier % Test)
+  .dependsOn(core, storagePg, verifier % "test->compile;test->test")
   .settings(
     commonSettings,
     name := "merklon-server",
     libraryDependencies ++= Seq(
-      "dev.zio"      %% "zio"      % zioVersion,
-      "dev.zio"      %% "zio-http" % zioHttpVersion,
-      "org.scalameta" %% "munit"   % munitVersion % Test
+      "dev.zio"            %% "zio"            % zioVersion,
+      "dev.zio"            %% "zio-http"       % zioHttpVersion,
+      "org.bouncycastle"    % "bcpkix-jdk18on" % bcVersion, // RFC 3161 TSA client
+      "org.scalameta"      %% "munit"          % munitVersion % Test
     )
   )
 
@@ -54,14 +58,18 @@ lazy val storagePg = project
     )
   )
 
-// Independent verifier: library + CLI. Depends on core only; uses JDK java.net.http for HTTP.
+// Independent verifier: library + CLI. Depends on core; JDK java.net.http for HTTP and
+// Bouncy Castle for RFC 3161 timestamp-token verification in proof bundles.
 lazy val verifier = project
   .in(file("modules/verifier"))
   .dependsOn(core)
   .settings(
     commonSettings,
     name := "merklon-verifier",
-    libraryDependencies += "org.scalameta" %% "munit" % munitVersion % Test
+    libraryDependencies ++= Seq(
+      "org.bouncycastle" % "bcpkix-jdk18on" % bcVersion, // RFC 3161 token verification
+      "org.scalameta"   %% "munit"          % munitVersion % Test
+    )
   )
 
 lazy val root = project

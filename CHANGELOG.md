@@ -71,6 +71,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `--witness-threshold N` (default: all listed) enforced on every command.
   - Checkpoint note parsing moved into core (`CheckpointNote.parse` /
     `parseSignatureLine`); `merklon.verifier.CheckpointParser` delegates to it.
+- Timed checkpoint batching (`merklon.server.CheckpointPublisher`), closing the Phase 1
+  "timed batching cadence" leftover: checkpoints are published by a background fiber at
+  most once per `MERKLON_BATCH_MS` (default 1000) instead of once per append, and each
+  batched checkpoint is submitted to all witnesses in parallel, off the request path —
+  one checkpoint and one witness round per interval regardless of append volume.
+  `POST /entries` now waits for the checkpoint that integrates the entry (published and
+  witnessed) before responding with `{leaf_index, tree_size}`, so proofs against the
+  returned size work immediately; if none arrives within the wait bound it returns 503
+  with the entry still durably appended. Appenders are gated on the publisher's
+  announcement rather than raw storage, so they can never observe the intermediate
+  un-cosigned note the sequencer persists before witnessing.
+- Phase 4 — qualified timestamps + offline proof bundles:
+  - `merklon-bundle/v1` (SPEC §8): a single-JSON, offline-verifiable evidence package —
+    entry bytes, inclusion proof, the embedded signed note (with witness cosignatures)
+    base64'd byte-for-byte, and an optional RFC 3161 timestamp token. Rendered/parsed in
+    core (`ProofBundle` / `ProofBundleCodec`) with no JSON dependency.
+  - `GET /bundle?leaf_index=N` exports a bundle against the latest checkpoint; with
+    `MERKLON_TSA_URL` set it is sealed by an RFC 3161 TSA (Bouncy Castle protocol
+    client, one TSA round-trip per checkpoint via caching; TSA failure → 502, never a
+    silently unsealed bundle).
+  - The RFC 3161 message imprint covers the checkpoint note *body* (origin/size/root),
+    so the attested statement is independent of attached signature lines; tokens travel
+    in the bundle, not the note (cosignature verifiers fail closed on extension lines).
+  - Verifier: `BundleVerifier` + `TimestampVerifier` (imprint binding always enforced;
+    CMS signature, ESSCertID, timestamping EKU and validity-at-genTime checked when a
+    TSA certificate is supplied — which then also makes a token *mandatory*), and the
+    offline CLI command `bundle FILE` with `--tsa-cert PEM`; `--url` is now required
+    only by the online commands.
+  - New dependency: Bouncy Castle `bcpkix-jdk18on` (MIT-style licence) in server and
+    verifier — ASN.1/RFC 3161 protocol handling only, never crypto primitives; the core
+    stays dependency-free.
+  - Tests: an in-process RFC 3161 test TSA (self-signed timestamping certificate,
+    real DER request/response protocol) and the Phase 4 done-bar end-to-end — log +
+    witness + HTTP TSA stub → exported bundle → full offline verification including
+    witness policy and TSA certificate; CLI smoke-tested offline against a real export.
 
 ### Fixed
 - Server integration test: replaced the fixed `Thread.sleep` startup wait with an active

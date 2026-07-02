@@ -46,7 +46,14 @@ class LogServerSuite extends munit.FunSuite:
     val storage = InMemoryStorageBackend()
     testAttestor = CheckpointAttestor.generateEd25519("test.merklon/log")
     val seq = Sequencer("test.merklon/log", storage, testAttestor)
-    val serve = Server.serve(LogServer.make(seq, storage)).provide(Server.defaultWithPort(testPort))
+    // Fast cadence so each POST /entries (which waits for its covering checkpoint) stays snappy.
+    val serve = for
+      publisher <- CheckpointPublisher.make(seq, storage, interval = 25.millis)
+      _ <- publisher.run.fork
+      exit <- Server
+        .serve(LogServer.make(seq, storage, publisher))
+        .provide(Server.defaultWithPort(testPort))
+    yield exit
     Unsafe.unsafe { implicit u =>
       testFiber = Runtime.default.unsafe.fork(serve)
     }

@@ -56,9 +56,15 @@ class WitnessedLogSuite extends munit.FunSuite:
       WitnessClient(s"http://localhost:$w1Port"),
       WitnessClient(s"http://localhost:$w2Port")
     )
-    val log = Server
-      .serve(LogServer.make(seq, storage, witnesses))
-      .provide(Server.defaultWithPort(logPort))
+    // The publisher witnesses each batched checkpoint before waking appenders, so a returned
+    // POST /entries means the served note already carries whatever cosignatures came back.
+    val log = for
+      publisher <- CheckpointPublisher.make(seq, storage, witnesses, interval = 25.millis)
+      _ <- publisher.run.fork
+      exit <- Server
+        .serve(LogServer.make(seq, storage, publisher))
+        .provide(Server.defaultWithPort(logPort))
+    yield exit
 
     Unsafe.unsafe { implicit u =>
       fibers = List(w1, w2, log).map(Runtime.default.unsafe.fork(_))

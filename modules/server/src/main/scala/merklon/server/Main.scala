@@ -17,6 +17,11 @@ object Main extends ZIOAppDefault:
   // Comma-separated witness base URLs; each published checkpoint is submitted to all of them.
   private val witnessUrls =
     sys.env.get("MERKLON_WITNESSES").toList.flatMap(_.split(',')).map(_.trim).filter(_.nonEmpty)
+  // Checkpoint batching cadence: at most one checkpoint (and one witness round) per interval.
+  private val batchMs =
+    sys.env.get("MERKLON_BATCH_MS").flatMap(_.toLongOption).getOrElse(1000L)
+  // RFC 3161 TSA endpoint; when set, exported proof bundles are sealed with a qualified timestamp.
+  private val tsaUrl = sys.env.get("MERKLON_TSA_URL")
 
   override def run: ZIO[Any, Throwable, Nothing] =
     for
@@ -24,13 +29,17 @@ object Main extends ZIOAppDefault:
       storage <- makeStorage
       seq = Sequencer(origin, storage, attestor)
       witnesses = witnessUrls.map(WitnessClient(_))
+      publisher <- CheckpointPublisher.make(seq, storage, witnesses, batchMs.milliseconds)
       _ <- ZIO.logInfo(s"merklon log server")
       _ <- ZIO.logInfo(s"  origin:     $origin")
       _ <- ZIO.logInfo(s"  port:       $port")
       _ <- ZIO.logInfo(s"  public key: ${MerkleTree.toHex(attestor.publicKey)}")
+      _ <- ZIO.logInfo(s"  batching:   checkpoint every ${batchMs}ms")
       _ <- ZIO.foreachDiscard(witnessUrls)(u => ZIO.logInfo(s"  witness:    $u"))
+      _ <- ZIO.foreachDiscard(tsaUrl)(u => ZIO.logInfo(s"  tsa:        $u (RFC 3161)"))
+      _ <- publisher.run.fork
       exit <- Server
-        .serve(LogServer.make(seq, storage, witnesses))
+        .serve(LogServer.make(seq, storage, publisher, tsaUrl.map(TsaClient(_))))
         .provide(Server.defaultWithPort(port))
     yield exit
 

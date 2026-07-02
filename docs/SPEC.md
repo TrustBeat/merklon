@@ -166,10 +166,11 @@ as cacheable static files — reserved for a later iteration.
 
 | Method & path | Purpose | Response |
 |---|---|---|
-| `POST /entries` | Submit an entry. Body is the raw entry bytes (or `{ "data": base64 }`). | `{ "leaf_index": N }` — the assigned index. Inclusion is provable only once a checkpoint integrates it. |
+| `POST /entries` | Submit an entry. Body is the raw entry bytes (or `{ "data": base64 }`). | `{ "leaf_index": N, "tree_size": M }` — the assigned index and the size of the checkpoint that integrated it. The server batches: checkpoints are published on a timed cadence (one checkpoint — and one witness round — per interval, `MERKLON_BATCH_MS`), and the response returns once the entry's covering checkpoint is published and witnessed, so proofs against `M` work immediately. `503` if no checkpoint integrated the entry within the server's wait bound; the entry itself remains durably appended. |
 | `GET /checkpoint` | Latest signed checkpoint. | `text/plain` signed note (§3). |
 | `GET /proof/inclusion?leaf_index=&tree_size=` | Inclusion proof against a tree size. | §4.1 |
 | `GET /proof/consistency?first=&second=` | Consistency proof between two sizes. | §5.1 |
+| `GET /bundle?leaf_index=` | Offline-verifiable proof bundle for one entry, against the latest checkpoint. | §8. `404` if the leaf is not yet integrated; `502` if a TSA is configured but unreachable (never a silently unsealed bundle). |
 
 Notes / TODO:
 - **TODO:** inclusion lookup **by leaf hash** (`?hash=`) in addition to by index, mirroring
@@ -266,19 +267,63 @@ unverifiable lines are ignored (consistent with §3.1 tolerance). Implemented by
 
 ## 8. Proof bundle (offline-verifiable, Phase 4)
 
-A self-contained artifact a relying party verifies **fully offline** with the CLI verifier:
+A self-contained artifact a relying party verifies **fully offline** with the CLI verifier
+(`merklon-verify --pubkey HEX [--witness …] [--tsa-cert PEM] bundle FILE`). Exported by the log
+at `GET /bundle?leaf_index=N` (§6).
 
-```
-{ entry, inclusion_proof, checkpoint, witness_sigs[], qualified_timestamp? }
+### 8.1 Container: `merklon-bundle/v1`
+
+A single JSON document. Every binary field is base64 (RFC 4648, with padding). The checkpoint
+note is embedded base64-encoded **byte-for-byte**, so its newlines and em-dashes survive any JSON
+tooling and the note's signatures keep verifying:
+
+```json
+{
+  "format": "merklon-bundle/v1",
+  "leaf_index": 5,
+  "entry": "<base64: original entry bytes>",
+  "inclusion_proof": ["<base64: audit-path hash>", "…"],
+  "checkpoint": "<base64: the full signed note (§3), incl. any witness cosignatures>",
+  "rfc3161_tst": "<base64: DER-encoded RFC 3161 TimeStampToken>"
+}
 ```
 
-- `entry` — the original bytes (the verifier recomputes the leaf hash).
-- `inclusion_proof` — §4.1, against `checkpoint.tree_size`.
-- `checkpoint` — the signed note (§3), including log + witness signatures.
-- `qualified_timestamp` *(OPTIONAL)* — `CheckpointAttestor` output, e.g. an RFC 3161 token over the
-  checkpoint root ("this state existed at this time").
-- **TODO:** concrete container encoding (single JSON document vs. a small archive) and the exact
-  field names / base64 conventions.
+- `format` *(REQUIRED)* — exactly `merklon-bundle/v1`; parsers MUST reject anything else.
+- `leaf_index` *(REQUIRED)* — the entry's 0-based index; MUST be `< tree_size` of the checkpoint.
+- `entry` *(REQUIRED)* — the original submitted bytes; the verifier recomputes the leaf hash.
+- `inclusion_proof` *(REQUIRED)* — the §4.1 audit path against the embedded checkpoint's size.
+- `checkpoint` *(REQUIRED)* — the signed note (§3) with the log signature and any cosignatures.
+- `rfc3161_tst` *(OPTIONAL)* — an RFC 3161 timestamp token whose SHA-256 **message imprint is the
+  checkpoint note body** (§3: origin, tree size, root hash) — "this log state existed at this
+  time." Binding the body rather than the full note keeps the attested statement independent of
+  which signature lines happen to be attached when the token is requested. Qualified timestamps
+  travel in the bundle, not as note lines: cosignature verifiers fail closed on extension lines,
+  and multi-kilobyte DER blobs do not belong in the note format.
+
+### 8.2 Verification (fully offline)
+
+Given the trusted log public key, optionally M trusted witnesses + threshold N, and optionally
+the TSA certificate, the verifier checks in order — failing closed at the first error:
+
+1. container syntax and `format`;
+2. the embedded note parses and its log signature verifies (§3);
+3. the witness policy (§7.4), when witnesses are configured;
+4. the recomputed leaf hash of `entry` proves inclusion at `leaf_index` (§4.2);
+5. when `rfc3161_tst` is present: the token's imprint equals SHA-256 of the note body — and,
+   when a TSA certificate is supplied, the token's CMS signature verifies against it (ESSCertID,
+   timestamping EKU, certificate validity at genTime). Supplying a TSA certificate for a bundle
+   *without* a token is a failure. Without a certificate the token's timestamp is reported as
+   imprint-bound but signer-unverified.
+
+Implemented by `merklon.verifier.BundleVerifier` / `TimestampVerifier`; the log is never
+contacted.
+
+### 8.3 Export
+
+The server builds bundles against its latest checkpoint. With `MERKLON_TSA_URL` configured, each
+bundle is sealed with a token from that RFC 3161 TSA (one TSA round-trip per checkpoint — tokens
+are cached and reused until the checkpoint advances). If the TSA cannot produce a token the
+export fails with `502` rather than serving an unsealed bundle.
 
 ## 9. Versioning
 

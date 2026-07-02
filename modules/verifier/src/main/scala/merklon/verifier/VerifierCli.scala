@@ -4,17 +4,24 @@
 package merklon.verifier
 
 import merklon.{Checkpoint, TrustedWitness, WitnessPolicy}
+import java.nio.file.{Files, Paths}
+import java.security.cert.{CertificateFactory, X509Certificate}
 import java.util.HexFormat
 
-/** Standalone CLI verifier. Fetches from a running merklon server and verifies locally.
+/** Standalone CLI verifier. Fetches from a running merklon server and verifies locally; the
+  * `bundle` command verifies an exported proof bundle fully offline.
   *
-  * Usage: merklon-verify --url URL --pubkey HEX_PUBKEY [witness flags] COMMAND [ARGS]
+  * Usage: merklon-verify --pubkey HEX_PUBKEY [--url URL] [witness flags] COMMAND [ARGS]
   *
-  * Commands:
+  * Commands (online — require `--url`):
   *   - checkpoint verify the latest checkpoint signature
   *   - inclusion LEAF_INDEX DATA_HEX verify that hex-encoded data is at the given leaf index
   *   - consistency OLD_SIZE OLD_ROOT_HEX verify the latest checkpoint is an append-only extension
   *     of a previously trusted (size, root) — i.e. the log has not rewritten history
+  *
+  * Commands (offline):
+  *   - bundle FILE verify a merklon-bundle/v1 document (SPEC.md §8) without contacting the log;
+  *     `--tsa-cert PEM_FILE` additionally verifies the bundle's RFC 3161 timestamp token signer
   *
   * Witness policy (applies to every command when present):
   *   - `--witness NAME=HEX_PUBKEY` (repeatable) — a trusted witness
@@ -33,7 +40,6 @@ import java.util.HexFormat
       case (arg, i) if arg == name && i + 1 < argv.length => argv(i + 1)
     }
 
-  val url = flagValue("--url").getOrElse { die("--url <base-url> is required") }
   val pubHex = flagValue("--pubkey").getOrElse { die("--pubkey <hex> is required") }
   val rawPub =
     try HexFormat.of().parseHex(pubHex)
@@ -56,15 +62,29 @@ import java.util.HexFormat
     die(s"--witness-threshold $threshold exceeds the ${witnesses.size} listed witnesses")
   val policy = WitnessRequirement(witnesses, threshold)
 
+  val tsaCert: Option[X509Certificate] = flagValue("--tsa-cert").map { path =>
+    try
+      val in = Files.newInputStream(Paths.get(path))
+      try
+        CertificateFactory
+          .getInstance("X.509")
+          .generateCertificate(in)
+          .asInstanceOf[X509Certificate]
+      finally in.close()
+    catch case e: Exception => die(s"--tsa-cert: cannot load $path: ${e.getMessage}")
+  }
+
   // Collect positional args: skip flags and their values.
-  val flagsWithValues = Set("--url", "--pubkey", "--witness", "--witness-threshold")
+  val flagsWithValues = Set("--url", "--pubkey", "--witness", "--witness-threshold", "--tsa-cert")
   val positional = argv.toList.zipWithIndex
     .filterNot { (arg, i) =>
       arg.startsWith("--") || (i > 0 && flagsWithValues.contains(argv(i - 1)))
     }
     .map(_._1)
 
-  val client = HttpLogClient(url)
+  // Online commands need a server; `bundle` must work with no network at all.
+  def client: LogClient =
+    HttpLogClient(flagValue("--url").getOrElse(die("--url <base-url> is required")))
 
   positional match
     case "checkpoint" :: _ =>
@@ -85,13 +105,16 @@ import java.util.HexFormat
         catch case _: Exception => die(s"old root must be hex-encoded: $oldRootHex")
       runConsistency(client, rawPub, policy, oldSize, oldRoot)
 
+    case "bundle" :: path :: _ =>
+      runBundle(path, rawPub, policy, tsaCert)
+
     case other =>
       val cmd = other.headOption.getOrElse("(none)")
       die(
         s"unknown command: $cmd\n" +
-          "usage: merklon-verify --url URL --pubkey HEX " +
-          "[--witness NAME=HEX]... [--witness-threshold N] " +
-          "checkpoint | inclusion INDEX DATA_HEX | consistency OLD_SIZE OLD_ROOT_HEX"
+          "usage: merklon-verify --pubkey HEX [--url URL] " +
+          "[--witness NAME=HEX]... [--witness-threshold N] [--tsa-cert PEM_FILE] " +
+          "checkpoint | inclusion INDEX DATA_HEX | consistency OLD_SIZE OLD_ROOT_HEX | bundle FILE"
       )
 
 /** The client-side N-of-M witness policy selected on the command line. */
@@ -178,6 +201,37 @@ private def runConsistency(
       s"OK  tree_size=$oldSize is an append-only prefix of tree_size=${newer.treeSize}"
     )
   else die(s"FAIL  consistency proof $oldSize -> ${newer.treeSize} did not verify")
+
+/** Verify an exported proof bundle fully offline (SPEC.md §8). */
+private def runBundle(
+    path: String,
+    rawPub: Array[Byte],
+    policy: WitnessRequirement,
+    tsaCert: Option[X509Certificate]
+): Unit =
+  val json =
+    try Files.readString(Paths.get(path))
+    catch case e: Exception => die(s"cannot read bundle file: ${e.getMessage}")
+  BundleVerifier.verify(json, rawPub, policy.trusted, policy.threshold, tsaCert) match
+    case Left(err) => die(s"FAIL  $err")
+    case Right(r) =>
+      println(s"OK  checkpoint tree_size=${r.checkpoint.treeSize} signature valid")
+      if policy.trusted.nonEmpty then
+        println(
+          s"OK  witness policy: ${r.cosigners.size}/${policy.trusted.size} valid cosignatures" +
+            s" (threshold ${policy.threshold}): ${r.cosigners.toList.sorted.mkString(", ")}"
+        )
+      println(s"OK  leaf ${r.leafIndex} included in tree_size=${r.checkpoint.treeSize}")
+      r.timestamp.foreach { ts =>
+        if ts.signerVerified then
+          println(s"OK  RFC 3161 timestamp ${ts.genTime} by ${ts.tsa} (signer verified)")
+        else
+          println(
+            s"OK  RFC 3161 timestamp ${ts.genTime} — imprint bound to this checkpoint," +
+              " signer NOT verified (pass --tsa-cert to verify)"
+          )
+      }
+      println("OK  bundle verified offline")
 
 private def die(msg: String): Nothing =
   System.err.println(msg)

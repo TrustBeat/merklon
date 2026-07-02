@@ -69,11 +69,13 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
 ## Roadmap (build order — see DESIGN.md for "done" criteria)
 0. **Merkle core** — hashing + inclusion/consistency proofs + RFC 6962 vectors *(done)*.
 1. **Persistence + checkpoints** — Postgres backend, Ed25519-signed checkpoints, durable log
-   key, sequencer *(done; timed batching cadence pending)*.
+   key, sequencer, timed checkpoint batching *(done)*.
 2. **Serving + verifier** — HTTP API + standalone independent verifier (library + CLI) *(done)*.
 3. **Witnessing** — N-of-M co-signing; split-view detection *(done: c2sp tlog-witness HTTP
    service + cosignature/v1 + durable state + log-side submission + CLI witness policy)*.
-4. **Pluggable attestation** — RFC 3161 qualified timestamps + offline proof bundles.
+4. **Pluggable attestation** — RFC 3161 qualified timestamps + offline proof bundles *(done:
+   `merklon-bundle/v1` + `GET /bundle` + TSA client + CLI offline `bundle` command; a
+   structured-event default `LeafCodec` codec is still open)*.
 
 ## Gotchas (Scala 3 / crypto)
 - **Byte-array equality:** never `==` on `Array[Byte]` — compare hex (`toHex`) or use

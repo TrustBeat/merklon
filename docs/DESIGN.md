@@ -105,7 +105,8 @@ Checkpoint { tree_size, root_hash, signed_at,
 - **Phase 1 — Persistence + checkpoints.** Postgres `StorageBackend`; Ed25519-signed checkpoints;
   sequencer batching on a cadence. *Done when:* append 100k entries across restarts, every checkpoint
   chains consistently. ✅ **done** (Postgres backend + durable Ed25519 log key; 100k-across-restarts
-  integration test in `merklon-storage-pg`; timed batching cadence still pending)
+  integration test in `merklon-storage-pg`; timed batching cadence via the server's
+  `CheckpointPublisher` — one checkpoint and one parallel witness round per interval)
 - **Phase 2 — Serving + independent verifier.** HTTP API + standalone verifier library/CLI.
   *Done when:* a client that never trusts the server can fetch a checkpoint and verify any entry's
   inclusion + the log's consistency. ✅ **done**
@@ -117,6 +118,12 @@ Checkpoint { tree_size, root_hash, signed_at,
 - **Phase 4 — Extension hooks (cheap wins only).** Wire `CheckpointAttestor` → qualified TS; `LeafCodec`
   structured-event default codec; `ProofBundle` export. *Done when:* export an offline evidence bundle
   for an event, sealed with a qualified timestamp, verify it with the CLI offline.
+  ✅ **done** (`merklon-bundle/v1` offline evidence container — SPEC §8; `GET /bundle` export sealed
+  by an RFC 3161 TSA client, one token per checkpoint; CLI `bundle` command verifies inclusion,
+  log signature, witness policy and the qualified timestamp fully offline. The qualified TS binds
+  the note body and travels in the bundle rather than as a note line — cosignature verifiers fail
+  closed on extension lines. Still open from this phase's wishlist: a structured-event default
+  `LeafCodec` codec; the seam itself shipped in Phase 1.)
 
 ### "v1" (the thing you publish)
 Phases 0–2 + cheap Phase-4 hooks: **an open-source verifiable append-only log, with an independent CLI
