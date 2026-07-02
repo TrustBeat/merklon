@@ -107,6 +107,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     witness + HTTP TSA stub → exported bundle → full offline verification including
     witness policy and TSA certificate; CLI smoke-tested offline against a real export.
 
+- DESIGN: "Post-quantum posture" section — the SHA-256 proof core is PQ-safe as-is;
+  Ed25519 signature migration tracks the c2sp specs (ML-DSA-44) behind the existing
+  attestor/note seams; long-lived offline evidence is defended by RFC 3161
+  time-anchoring plus the reserved re-stamping/LTV hook.
+
 ### Fixed
 - Server integration test: replaced the fixed `Thread.sleep` startup wait with an active
   port-readiness poll, removing a race where the first request could beat the server's bind.

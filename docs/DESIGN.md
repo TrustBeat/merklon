@@ -141,6 +141,42 @@ PostgreSQL**. This is a **standalone repo** so it reads as a clean, focused open
 in test vectors + the independent verifier from day one — for a transparency log, verifiable
 correctness *is* the product.
 
+### Post-quantum posture
+
+What a quantum adversary breaks here, what it doesn't, and the migration path. Framing first:
+nothing in a transparency log is encrypted — everything is public — so there is **no
+harvest-now-decrypt-later exposure**. The quantum risk is **signature forgery**, and forgery is
+not retroactive for online verification: live logs rotate to PQ keys before adversaries have
+cryptographically relevant quantum machines. The long tail is **offline evidence retained for
+years** (proof bundles), where a future forger holding a broken key must not be able to fabricate
+"old" evidence.
+
+- **Merkle core — already PQ-safe.** Leaf/node hashing and the inclusion/consistency proofs are
+  pure SHA-256. Grover's algorithm only halves its effective preimage security and collision
+  attacks remain impractical; NIST retains SHA-256 in the post-quantum era. Tamper evidence,
+  append-only verification, and split-view detection survive a quantum adversary unchanged.
+- **Signatures — the migration surface.** Ed25519 (Shor-broken) is used by all three trust
+  anchors: the log checkpoint key, witness cosignature/v1, and the signed-note key-ID formulas.
+  The upstream ecosystem is already moving — c2sp.org/tlog-witness SHOULDs **ML-DSA-44**, a
+  deviation we record in SPEC §7.3. Migration MUST track the c2sp signed-note/cosignature
+  specs (new signature-type bytes, new wire layouts) — per the "never invent crypto" rule we do
+  not ship a home-grown PQ note format ahead of the standard. The code seams are ready:
+  `CheckpointAttestor` abstracts the signer, `NoteSignature` carries an opaque blob discriminated
+  by key-ID type byte, and verification is centralized (`Ed25519.verify`, `CosignatureV1.verify`,
+  `WitnessPolicy`). The JDK ships **ML-DSA** since Java 24 (in the 25 LTS), so a PQ attestor
+  needs no new crypto library — consistent with the "JDK + vetted libraries" rule.
+- **Qualified timestamps — classical today, designed for re-sealing.** RFC 3161 TSAs currently
+  sign with RSA/ECDSA; the token's message imprint is SHA-256 and stays sound. The archival
+  answer is the **re-stamping / LTV extension point** (table above): periodically re-seal
+  historical checkpoints and bundles with a then-current TSA — hash-based **SLH-DSA in CMS is
+  already standardized (RFC 8708)** — so each stamp time-anchors the previous one before its
+  algorithm weakens. A later forger can produce a signature, but not one anchored inside the
+  pre-quantum timestamp chain.
+
+Posture in one line: **the proofs are post-quantum safe today; the signatures have a
+standards-tracked migration path behind existing seams; long-lived evidence is defended by
+time-anchoring, which is why the RFC 3161 + re-stamping hooks exist.**
+
 ---
 
 ## 2. Next step (open)
