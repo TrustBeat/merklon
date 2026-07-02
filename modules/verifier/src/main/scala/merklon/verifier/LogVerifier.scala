@@ -3,7 +3,7 @@
 
 package merklon.verifier
 
-import merklon.{Checkpoint, CheckpointNote, Ed25519, MerkleTree}
+import merklon.{Checkpoint, CheckpointNote, Ed25519, LeafCodec, MerkleTree}
 
 /** Pure independent verifier — no server trust required.
   *
@@ -21,15 +21,25 @@ object LogVerifier:
     val body = CheckpointNote.noteBody(cp).getBytes("UTF-8")
     cp.signatures.exists(sig => Ed25519.verify(rawPublicKey, body, sig.sig))
 
-  /** Verify that `entry` (the raw submitted bytes) is included at `proof.leafIndex` in `cp`. */
-  def verifyInclusion(entry: Array[Byte], proof: InclusionProof, cp: Checkpoint): Boolean =
-    MerkleTree.verifyInclusion(
-      leafIndex = proof.leafIndex.toInt,
-      treeSize = proof.treeSize.toInt,
-      leafHash = MerkleTree.leafHash(entry),
-      proof = proof.auditPath,
-      expectedRoot = cp.rootHash
-    )
+  /** Verify that `entry` (the raw submitted bytes) is included at `proof.leafIndex` in `cp`.
+    * `codec` must match the log's configured `LeafCodec` — the leaf hash is recomputed over the
+    * codec's canonical form of the entry.
+    */
+  def verifyInclusion(
+      entry: Array[Byte],
+      proof: InclusionProof,
+      cp: Checkpoint,
+      codec: LeafCodec = LeafCodec.Identity
+  ): Boolean =
+    try
+      MerkleTree.verifyInclusion(
+        leafIndex = proof.leafIndex.toInt,
+        treeSize = proof.treeSize.toInt,
+        leafHash = MerkleTree.leafHash(codec.encode(entry)),
+        proof = proof.auditPath,
+        expectedRoot = cp.rootHash
+      )
+    catch case _: IllegalArgumentException => false // entry invalid under the codec
 
   /** Verify that `older` is an append-only prefix of `newer` according to `proof`. */
   def verifyConsistency(older: Checkpoint, newer: Checkpoint, proof: ConsistencyProof): Boolean =

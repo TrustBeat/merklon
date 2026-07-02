@@ -107,6 +107,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     witness + HTTP TSA stub → exported bundle → full offline verification including
     witness policy and TSA certificate; CLI smoke-tested offline against a real export.
 
+- `structured-event/v1` leaf codec (SPEC §9), completing the last Phase 4 wishlist item:
+  a flat JSON event envelope (`actor`/`action`/`source`/`time` + optional
+  `prev_ref`/`payload`) strictly parsed by a dependency-free parser and re-emitted
+  canonically (fixed key order, minimal escaping), so producers' field order, whitespace,
+  and escape choices cannot change the leaf hash; invalid events fail closed with 400.
+  Selected via `MERKLON_CODEC` on the server and `--codec` in the CLI;
+  `LogVerifier`/`BundleVerifier` recompute leaf hashes through the codec.
+- Inclusion lookup by leaf hash (RFC 9162 `get-proof-by-hash` parity, SPEC §6):
+  `GET /proof/inclusion?leaf_hash=HEX&tree_size=` resolves the lowest matching index
+  (404 when absent); `StorageBackend.findLeafIndex` (in-memory + Postgres with an index
+  on `leaf_hash`); CLI `inclusion DATA_HEX` computes the hash locally — the lookup adds
+  no server trust because the returned proof still has to verify against the root.
+- Entry retrieval `GET /entries?start=&end=` (SPEC §6): pages of
+  `{leaf_index, data(base64)}` capped at 1000, so monitors and mirrors can replay the
+  log and recompute roots independently; `StorageBackend.getEntries` bulk read.
+- Write-path hardening: per-entry size cap on `POST /entries`
+  (`MERKLON_MAX_ENTRY_BYTES`, default 65536 → 413) and a 64 KiB body cap on the witness
+  `add-checkpoint` endpoint.
+- SPEC §6.1 error model documented (plain-text error bodies; 400/404/413/502/503), and
+  the resolved §6 TODOs cleared.
 - DESIGN: "Post-quantum posture" section — the SHA-256 proof core is PQ-safe as-is;
   Ed25519 signature migration tracks the c2sp specs (ML-DSA-44) behind the existing
   attestor/note seams; long-lived offline evidence is defended by RFC 3161

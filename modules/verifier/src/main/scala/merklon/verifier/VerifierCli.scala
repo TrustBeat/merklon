@@ -3,7 +3,7 @@
 
 package merklon.verifier
 
-import merklon.{Checkpoint, TrustedWitness, WitnessPolicy}
+import merklon.{Checkpoint, LeafCodec, MerkleTree, TrustedWitness, WitnessPolicy}
 import java.nio.file.{Files, Paths}
 import java.security.cert.{CertificateFactory, X509Certificate}
 import java.util.HexFormat
@@ -16,6 +16,8 @@ import java.util.HexFormat
   * Commands (online — require `--url`):
   *   - checkpoint verify the latest checkpoint signature
   *   - inclusion LEAF_INDEX DATA_HEX verify that hex-encoded data is at the given leaf index
+  *   - inclusion DATA_HEX same, but the index is looked up by leaf hash (get-proof-by-hash) — the
+  *     hash is computed locally, never trusted from the server
   *   - consistency OLD_SIZE OLD_ROOT_HEX verify the latest checkpoint is an append-only extension
   *     of a previously trusted (size, root) — i.e. the log has not rewritten history
   *
@@ -27,6 +29,9 @@ import java.util.HexFormat
   *   - `--witness NAME=HEX_PUBKEY` (repeatable) — a trusted witness
   *   - `--witness-threshold N` — require N distinct valid cosignatures (default: all listed
   *     witnesses)
+  *
+  * Leaf codec (`inclusion` and `bundle`): `--codec identity|structured-event/v1` must match the
+  * log's configured codec — the verifier recomputes leaf hashes over the codec's canonical form.
   */
 @main def merklon_verify(rawArgs: String*): Unit =
   val argv = rawArgs.toArray
@@ -74,8 +79,13 @@ import java.util.HexFormat
     catch case e: Exception => die(s"--tsa-cert: cannot load $path: ${e.getMessage}")
   }
 
+  val codec: LeafCodec = flagValue("--codec") match
+    case None       => LeafCodec.Identity
+    case Some(name) => LeafCodec.named(name).getOrElse(die(s"--codec: unknown codec '$name'"))
+
   // Collect positional args: skip flags and their values.
-  val flagsWithValues = Set("--url", "--pubkey", "--witness", "--witness-threshold", "--tsa-cert")
+  val flagsWithValues =
+    Set("--url", "--pubkey", "--witness", "--witness-threshold", "--tsa-cert", "--codec")
   val positional = argv.toList.zipWithIndex
     .filterNot { (arg, i) =>
       arg.startsWith("--") || (i > 0 && flagsWithValues.contains(argv(i - 1)))
@@ -95,7 +105,13 @@ import java.util.HexFormat
       val data =
         try HexFormat.of().parseHex(dataHex)
         catch case _: Exception => die(s"data must be hex-encoded: $dataHex")
-      runInclusion(client, rawPub, policy, idx, data)
+      runInclusion(client, rawPub, policy, Some(idx), data, codec)
+
+    case "inclusion" :: dataHex :: Nil =>
+      val data =
+        try HexFormat.of().parseHex(dataHex)
+        catch case _: Exception => die(s"data must be hex-encoded: $dataHex")
+      runInclusion(client, rawPub, policy, None, data, codec)
 
     case "consistency" :: oldSizeStr :: oldRootHex :: _ =>
       val oldSize =
@@ -106,14 +122,14 @@ import java.util.HexFormat
       runConsistency(client, rawPub, policy, oldSize, oldRoot)
 
     case "bundle" :: path :: _ =>
-      runBundle(path, rawPub, policy, tsaCert)
+      runBundle(path, rawPub, policy, tsaCert, codec)
 
     case other =>
       val cmd = other.headOption.getOrElse("(none)")
       die(
         s"unknown command: $cmd\n" +
           "usage: merklon-verify --pubkey HEX [--url URL] " +
-          "[--witness NAME=HEX]... [--witness-threshold N] [--tsa-cert PEM_FILE] " +
+          "[--witness NAME=HEX]... [--witness-threshold N] [--tsa-cert PEM_FILE] [--codec NAME] " +
           "checkpoint | inclusion INDEX DATA_HEX | consistency OLD_SIZE OLD_ROOT_HEX | bundle FILE"
       )
 
@@ -149,12 +165,17 @@ private def runCheckpoint(
     println(s"OK  checkpoint tree_size=${cp.treeSize} signature valid")
   else die("FAIL  checkpoint signature did not verify")
 
+/** Verify inclusion; when `leafIndex` is None the index is resolved via get-proof-by-hash from a
+  * locally computed leaf hash, so the lookup adds no trust in the server — the proof still has to
+  * verify against the checkpoint root for whatever index came back.
+  */
 private def runInclusion(
     client: LogClient,
     rawPub: Array[Byte],
     policy: WitnessRequirement,
-    leafIndex: Long,
-    data: Array[Byte]
+    leafIndex: Option[Long],
+    data: Array[Byte],
+    codec: LeafCodec
 ): Unit =
   val cpText =
     try client.fetchCheckpoint()
@@ -164,13 +185,22 @@ private def runInclusion(
     die("FAIL  checkpoint signature did not verify")
   policy.enforce(cp)
   val proofJson =
-    try client.fetchInclusionProof(leafIndex, cp.treeSize)
+    try
+      leafIndex match
+        case Some(idx) => client.fetchInclusionProof(idx, cp.treeSize)
+        case None =>
+          val leafHash = MerkleTree.leafHash(codec.encode(data))
+          client.fetchInclusionProofByHash(MerkleTree.toHex(leafHash), cp.treeSize)
     catch case e: Exception => die(s"fetch failed: ${e.getMessage}")
   val proof =
     ProofParser.parseInclusion(proofJson).fold(e => die(s"proof parse error: $e"), identity)
-  if LogVerifier.verifyInclusion(data, proof, cp) then
-    println(s"OK  leaf $leafIndex included in tree_size=${cp.treeSize}")
-  else die(s"FAIL  inclusion proof for leaf $leafIndex did not verify")
+  leafIndex.foreach { idx =>
+    if proof.leafIndex != idx then
+      die(s"FAIL  server answered for leaf ${proof.leafIndex}, asked about $idx")
+  }
+  if LogVerifier.verifyInclusion(data, proof, cp, codec) then
+    println(s"OK  leaf ${proof.leafIndex} included in tree_size=${cp.treeSize}")
+  else die(s"FAIL  inclusion proof for leaf ${proof.leafIndex} did not verify")
 
 private def runConsistency(
     client: LogClient,
@@ -207,12 +237,13 @@ private def runBundle(
     path: String,
     rawPub: Array[Byte],
     policy: WitnessRequirement,
-    tsaCert: Option[X509Certificate]
+    tsaCert: Option[X509Certificate],
+    codec: LeafCodec
 ): Unit =
   val json =
     try Files.readString(Paths.get(path))
     catch case e: Exception => die(s"cannot read bundle file: ${e.getMessage}")
-  BundleVerifier.verify(json, rawPub, policy.trusted, policy.threshold, tsaCert) match
+  BundleVerifier.verify(json, rawPub, policy.trusted, policy.threshold, tsaCert, codec) match
     case Left(err) => die(s"FAIL  $err")
     case Right(r) =>
       println(s"OK  checkpoint tree_size=${r.checkpoint.treeSize} signature valid")

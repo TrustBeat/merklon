@@ -127,6 +127,27 @@ class BundleVerifierSuite extends munit.FunSuite:
       case Right(_)  => fail("must fail: TSA verification was requested but token is absent")
   }
 
+  test("structured-event codec: log hashes the canonical form and the verifier matches it") {
+    val storage = InMemoryStorageBackend()
+    val seq = Sequencer(origin, storage, attestor, LeafCodec.StructuredEventJsonV1)
+    // Deliberately non-canonical on the wire: odd order + whitespace.
+    val submitted = """{ "time": 5, "source": "s", "action": "login", "actor": "alice" }"""
+    seq.append(submitted.getBytes("UTF-8"))
+    val cp = seq.publishCheckpoint()
+    val proof = MerkleTree.inclusionProofFromHashes(0, storage.leafHashes(0L, 1L).toList)
+    val json = ProofBundleCodec.render(
+      ProofBundle(submitted.getBytes("UTF-8"), 0L, proof, CheckpointNote.render(cp), None)
+    )
+    val report = BundleVerifier
+      .verify(json, attestor.publicKey, codec = LeafCodec.StructuredEventJsonV1)
+      .fold(e => fail(s"verify with matching codec: $e"), identity)
+    assertEquals(report.leafIndex, 0L)
+    // The wrong codec recomputes a different leaf hash and must fail.
+    BundleVerifier.verify(json, attestor.publicKey) match
+      case Left(err) => assert(err.contains("inclusion proof"), err)
+      case Right(_)  => fail("identity codec must not verify a structured-event log")
+  }
+
   test("rejects an out-of-range leaf index") {
     val bundle = ProofBundleCodec.parse(bundleJson).toOption.get
     val oob = ProofBundleCodec.render(bundle.copy(leafIndex = 5L))

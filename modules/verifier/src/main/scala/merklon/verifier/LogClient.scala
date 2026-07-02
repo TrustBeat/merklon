@@ -7,4 +7,5 @@ package merklon.verifier
 trait LogClient:
   def fetchCheckpoint(): String
   def fetchInclusionProof(leafIndex: Long, treeSize: Long): String
+  def fetchInclusionProofByHash(leafHashHex: String, treeSize: Long): String
   def fetchConsistencyProof(first: Long, second: Long): String

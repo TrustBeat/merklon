@@ -167,18 +167,28 @@ as cacheable static files — reserved for a later iteration.
 | Method & path | Purpose | Response |
 |---|---|---|
 | `POST /entries` | Submit an entry. Body is the raw entry bytes (or `{ "data": base64 }`). | `{ "leaf_index": N, "tree_size": M }` — the assigned index and the size of the checkpoint that integrated it. The server batches: checkpoints are published on a timed cadence (one checkpoint — and one witness round — per interval, `MERKLON_BATCH_MS`), and the response returns once the entry's covering checkpoint is published and witnessed, so proofs against `M` work immediately. `503` if no checkpoint integrated the entry within the server's wait bound; the entry itself remains durably appended. |
+| `GET /entries?start=&end=` | Entries of `[start, end)` so monitors and mirrors can replay the log and recompute roots. | `{ "entries": [ { "leaf_index": N, "data": base64 }, … ] }` — at most **1000** per request (clamp `end` and page). |
 | `GET /checkpoint` | Latest signed checkpoint. | `text/plain` signed note (§3). |
-| `GET /proof/inclusion?leaf_index=&tree_size=` | Inclusion proof against a tree size. | §4.1 |
+| `GET /proof/inclusion?tree_size=&(leaf_index= \| leaf_hash=)` | Inclusion proof against a tree size. `leaf_hash` (hex) mirrors RFC 9162 `get-proof-by-hash`: the lowest matching index is resolved and echoed back; clients compute the hash locally over the codec's canonical form (§9). | §4.1. `404` for an unknown hash. |
 | `GET /proof/consistency?first=&second=` | Consistency proof between two sizes. | §5.1 |
 | `GET /bundle?leaf_index=` | Offline-verifiable proof bundle for one entry, against the latest checkpoint. | §8. `404` if the leaf is not yet integrated; `502` if a TSA is configured but unreachable (never a silently unsealed bundle). |
 
-Notes / TODO:
-- **TODO:** inclusion lookup **by leaf hash** (`?hash=`) in addition to by index, mirroring
-  RFC 9162 `get-proof-by-hash`.
-- **TODO:** entry retrieval (`GET /entries?start=&end=`) and tile/node fetch endpoints if/when the
-  tiles backend lands.
-- **TODO:** error model (status codes + JSON error body), pagination limits, and whether
-  `tree_size` defaults to the latest checkpoint when omitted.
+### 6.1 Error model
+
+Errors are plain-text bodies (human-readable reason) with these status codes; success bodies are
+JSON except `GET /checkpoint` (`text/plain` note). The witness endpoints follow their own protocol
+statuses (§7.3).
+
+| Status | Meaning |
+|---|---|
+| `400` | Malformed or missing parameters; entry rejected by the configured `LeafCodec` (§9) or `AppendAuthorizer`. |
+| `404` | No checkpoint published yet; unknown `leaf_hash`; `leaf_index` beyond the latest checkpoint (`/bundle`). |
+| `413` | Entry exceeds the log's size cap (`MERKLON_MAX_ENTRY_BYTES`, default 65536). |
+| `502` | A TSA is configured but could not produce a token (`/bundle`). |
+| `503` | The entry was durably appended but no checkpoint integrated it within the server's wait bound — retry `GET /checkpoint` / `GET /proof/inclusion` later. |
+
+Remaining TODO: tile/node fetch endpoints if/when the tiles backend lands; whether `tree_size`
+defaults to the latest checkpoint when omitted.
 
 ## 7. Witnessing (Phase 3)
 
@@ -325,7 +335,49 @@ bundle is sealed with a token from that RFC 3161 TSA (one TSA round-trip per che
 are cached and reused until the checkpoint advances). If the TSA cannot produce a token the
 export fails with `502` rather than serving an unsealed bundle.
 
-## 9. Versioning
+## 9. Structured event codec (`structured-event/v1`)
+
+The core stores opaque bytes; a `LeafCodec` defines what gets leaf-hashed:
+`leaf = H(codec.encode(data))`. The submitted bytes are what is stored and served (§6); the codec
+only shapes the hash input. The default codec is **identity**. Verifiers MUST apply the log's
+codec when recomputing leaf hashes (CLI: `--codec`; server: `MERKLON_CODEC`).
+
+`structured-event/v1` is the built-in codec for structured events: it strictly parses the
+submitted JSON and re-emits it **canonically**, so producers' field order, whitespace, and escape
+choices cannot change the leaf hash.
+
+### 9.1 Envelope
+
+One flat JSON object; values are strings or non-negative integers only (no nesting):
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `actor` | string | yes | Who performed the action. |
+| `action` | string | yes | What happened. |
+| `source` | string | yes | Which system emitted the event. |
+| `time` | integer | yes | Event time, milliseconds since the Unix epoch, `>= 0`. |
+| `prev_ref` | string | no | Lowercase hex reference to an earlier leaf hash (event chaining). |
+| `payload` | string | no | Free-form content. |
+
+Parsing **fails closed**: unknown fields, duplicate keys, nested values, fractions/exponents,
+uppercase or odd-length `prev_ref` hex, and trailing content are errors (HTTP `400` at the API),
+never silently normalized.
+
+### 9.2 Canonical form
+
+Keys in lexicographic order (`action`, `actor`, `payload`?, `prev_ref`?, `source`, `time`),
+absent optional fields omitted, no whitespace, UTF-8. String escaping is minimal and fixed:
+`\"`, `\\`, the two-character escapes for backspace/form-feed/newline/carriage-return/tab,
+`\u00xx` (lowercase hex) for other control characters, everything else raw UTF-8:
+
+```json
+{"action":"login","actor":"alice","payload":"ok","prev_ref":"0a0b","source":"auth-svc","time":1750000000000}
+```
+
+The canonical form is a fixed point: parsing it and re-encoding reproduces it byte-exactly.
+Implemented by `merklon.StructuredEvent` / `LeafCodec.StructuredEventJsonV1`.
+
+## 10. Versioning
 
 - This spec is versioned with the repository and tracked in `CHANGELOG.md`.
 - Wire-format-breaking changes MUST bump a documented format version before any production data

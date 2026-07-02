@@ -25,6 +25,18 @@ final class InMemoryStorageBackend extends StorageBackend:
       Some(LogEntry(index, r.leafHash.clone(), r.data.clone(), r.submittedAt))
   }
 
+  def getEntries(from: Long, until: Long): Vector[LogEntry] = synchronized {
+    (from.max(0) until until.min(rows.size.toLong)).toVector.map { i =>
+      val r = rows(i.toInt)
+      LogEntry(i, r.leafHash.clone(), r.data.clone(), r.submittedAt)
+    }
+  }
+
+  def findLeafIndex(leafHash: Array[Byte]): Option[Long] = synchronized {
+    val i = rows.indexWhere(r => java.util.Arrays.equals(r.leafHash, leafHash))
+    if i < 0 then None else Some(i.toLong)
+  }
+
   def size: Long = synchronized(rows.size.toLong)
 
   def leafHashes(from: Long, until: Long): Vector[Array[Byte]] = synchronized {

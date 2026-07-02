@@ -22,6 +22,8 @@ class CheckpointPublisherSuite extends munit.FunSuite:
     @volatile var checkpointsSaved: Int = 0
     def append(leafHash: Array[Byte], data: Array[Byte]): Long = inner.append(leafHash, data)
     def getEntry(index: Long): Option[LogEntry] = inner.getEntry(index)
+    def getEntries(from: Long, until: Long): Vector[LogEntry] = inner.getEntries(from, until)
+    def findLeafIndex(leafHash: Array[Byte]): Option[Long] = inner.findLeafIndex(leafHash)
     def size: Long = inner.size
     def leafHashes(from: Long, until: Long): Vector[Array[Byte]] = inner.leafHashes(from, until)
     def saveCheckpoint(cp: Checkpoint): Unit =

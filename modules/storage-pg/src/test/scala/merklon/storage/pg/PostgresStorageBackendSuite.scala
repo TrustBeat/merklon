@@ -111,6 +111,23 @@ class PostgresStorageBackendSuite extends munit.FunSuite:
     }
   }
 
+  test("getEntries range and findLeafIndex (first occurrence wins on duplicates)") {
+    withFreshBackend { backend =>
+      val data = Vector("one", "two", "two", "three").map(_.getBytes("UTF-8"))
+      val hashes = data.map(MerkleTree.leafHash)
+      data.zip(hashes).foreach((d, h) => backend.append(h, d))
+
+      val page = backend.getEntries(1L, 3L)
+      assertEquals(page.map(_.index), Vector(1L, 2L))
+      assertEquals(page.map(e => new String(e.data, "UTF-8")), Vector("two", "two"))
+
+      // "two" appears at indices 1 and 2 — the lowest index must win, deterministically.
+      assertEquals(backend.findLeafIndex(hashes(1)), Some(1L))
+      assertEquals(backend.findLeafIndex(hashes(0)), Some(0L))
+      assertEquals(backend.findLeafIndex(MerkleTree.leafHash("absent".getBytes("UTF-8"))), None)
+    }
+  }
+
   test("checkpoint save / latest round-trip preserves signatures in order") {
     withFreshBackend { backend =>
       assertEquals(backend.latestCheckpoint(), None)

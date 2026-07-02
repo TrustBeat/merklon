@@ -80,7 +80,7 @@ forking. Each is an interface in Layer 1 with a sensible default.
 | Hook | What it is | Why a downstream app might need it | Now? |
 |---|---|---|---|
 | **`CheckpointAttestor`** | Pluggable signer over each checkpoint root. Default = log Ed25519 key. | A stronger attestor — e.g. a qualified RFC 3161 timestamp → "this state existed at this time." | **Build (cheap)** |
-| **`LeafCodec`** | Core stores opaque `data`; codec defines `leaf = H(canonical(event))`. | A structured event envelope (actor, action, ts, source, prev_ref). | **Design iface + default JSON codec** |
+| **`LeafCodec`** | Core stores opaque `data`; codec defines `leaf = H(canonical(event))`. | A structured event envelope (actor, action, ts, source, prev_ref). | ✅ **built** (`structured-event/v1`, SPEC §9) |
 | **`ProofBundle` export** | Self-contained offline-verifiable package: entry + inclusion proof + checkpoint + witness sigs + attestations. | The artifact a relying party verifies offline (offline-verify experience). | **Build (cheap, high value)** |
 | **`StorageBackend`** | Interface over persistence. | Isolated / tiled storage for different deployments. | **Design interface now** |
 | **Tenant/origin namespacing** | Each checkpoint carries a log identity/origin. | Multiple independent logs (one per system/origin). | **Reserve field; don't build** |
@@ -122,8 +122,9 @@ Checkpoint { tree_size, root_hash, signed_at,
   by an RFC 3161 TSA client, one token per checkpoint; CLI `bundle` command verifies inclusion,
   log signature, witness policy and the qualified timestamp fully offline. The qualified TS binds
   the note body and travels in the bundle rather than as a note line — cosignature verifiers fail
-  closed on extension lines. Still open from this phase's wishlist: a structured-event default
-  `LeafCodec` codec; the seam itself shipped in Phase 1.)
+  closed on extension lines. The structured-event default `LeafCodec` codec shipped as
+  `structured-event/v1` — SPEC §9: strict parse + canonical re-encode, so producers' formatting
+  cannot change the leaf hash.)
 
 ### "v1" (the thing you publish)
 Phases 0–2 + cheap Phase-4 hooks: **an open-source verifiable append-only log, with an independent CLI

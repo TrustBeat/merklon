@@ -15,6 +15,14 @@ trait StorageBackend:
   /** Retrieve an entry by its 0-based index. */
   def getEntry(index: Long): Option[LogEntry]
 
+  /** Entries for the half-open range [from, until), in index order. */
+  def getEntries(from: Long, until: Long): Vector[LogEntry]
+
+  /** The lowest index whose leaf hash equals `leafHash` (RFC 9162 get-proof-by-hash lookups).
+    * Duplicate submissions share a leaf hash; the first occurrence wins deterministically.
+    */
+  def findLeafIndex(leafHash: Array[Byte]): Option[Long]
+
   /** Total number of entries committed to the log. */
   def size: Long
 

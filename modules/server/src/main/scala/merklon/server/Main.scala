@@ -22,12 +22,20 @@ object Main extends ZIOAppDefault:
     sys.env.get("MERKLON_BATCH_MS").flatMap(_.toLongOption).getOrElse(1000L)
   // RFC 3161 TSA endpoint; when set, exported proof bundles are sealed with a qualified timestamp.
   private val tsaUrl = sys.env.get("MERKLON_TSA_URL")
+  // Leaf codec: "identity" (default) or "structured-event/v1" (SPEC §9). Verifiers must match.
+  private val codecName = sys.env.getOrElse("MERKLON_CODEC", "identity")
+  // Per-entry size cap on POST /entries (413 beyond it).
+  private val maxEntryBytes =
+    sys.env.get("MERKLON_MAX_ENTRY_BYTES").flatMap(_.toIntOption).getOrElse(64 * 1024)
 
   override def run: ZIO[Any, Throwable, Nothing] =
     for
       attestor <- makeAttestor
       storage <- makeStorage
-      seq = Sequencer(origin, storage, attestor)
+      codec <- ZIO
+        .fromOption(LeafCodec.named(codecName))
+        .orElseFail(IllegalArgumentException(s"MERKLON_CODEC: unknown codec '$codecName'"))
+      seq = Sequencer(origin, storage, attestor, codec)
       witnesses = witnessUrls.map(WitnessClient(_))
       publisher <- CheckpointPublisher.make(seq, storage, witnesses, batchMs.milliseconds)
       _ <- ZIO.logInfo(s"merklon log server")
@@ -35,11 +43,12 @@ object Main extends ZIOAppDefault:
       _ <- ZIO.logInfo(s"  port:       $port")
       _ <- ZIO.logInfo(s"  public key: ${MerkleTree.toHex(attestor.publicKey)}")
       _ <- ZIO.logInfo(s"  batching:   checkpoint every ${batchMs}ms")
+      _ <- ZIO.logInfo(s"  codec:      $codecName")
       _ <- ZIO.foreachDiscard(witnessUrls)(u => ZIO.logInfo(s"  witness:    $u"))
       _ <- ZIO.foreachDiscard(tsaUrl)(u => ZIO.logInfo(s"  tsa:        $u (RFC 3161)"))
       _ <- publisher.run.fork
       exit <- Server
-        .serve(LogServer.make(seq, storage, publisher, tsaUrl.map(TsaClient(_))))
+        .serve(LogServer.make(seq, storage, publisher, tsaUrl.map(TsaClient(_)), maxEntryBytes))
         .provide(Server.defaultWithPort(port))
     yield exit
 

@@ -30,7 +30,8 @@ object BundleVerifier:
       logPublicKey: Array[Byte],
       witnesses: Seq[TrustedWitness] = Nil,
       threshold: Int = 0,
-      tsaCert: Option[X509Certificate] = None
+      tsaCert: Option[X509Certificate] = None,
+      codec: LeafCodec = LeafCodec.Identity
   ): Either[String, BundleReport] =
     for
       bundle <- ProofBundleCodec.parse(bundleJson)
@@ -50,7 +51,7 @@ object BundleVerifier:
       )
       proof = InclusionProof(bundle.leafIndex, cp.treeSize, bundle.inclusionProof)
       _ <- check(
-        LogVerifier.verifyInclusion(bundle.entry, proof, cp),
+        LogVerifier.verifyInclusion(bundle.entry, proof, cp, codec),
         s"inclusion proof for leaf ${bundle.leafIndex} did not verify"
       )
       timestamp <- verifyTimestamp(bundle, cp, tsaCert)

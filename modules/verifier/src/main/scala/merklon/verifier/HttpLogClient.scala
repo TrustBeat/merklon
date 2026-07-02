@@ -17,6 +17,9 @@ final class HttpLogClient(baseUrl: String) extends LogClient:
   def fetchInclusionProof(leafIndex: Long, treeSize: Long): String =
     get(s"$baseUrl/proof/inclusion?leaf_index=$leafIndex&tree_size=$treeSize")
 
+  def fetchInclusionProofByHash(leafHashHex: String, treeSize: Long): String =
+    get(s"$baseUrl/proof/inclusion?leaf_hash=$leafHashHex&tree_size=$treeSize")
+
   def fetchConsistencyProof(first: Long, second: Long): String =
     get(s"$baseUrl/proof/consistency?first=$first&second=$second")
 

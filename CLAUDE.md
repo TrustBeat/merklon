@@ -74,8 +74,8 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
 3. **Witnessing** — N-of-M co-signing; split-view detection *(done: c2sp tlog-witness HTTP
    service + cosignature/v1 + durable state + log-side submission + CLI witness policy)*.
 4. **Pluggable attestation** — RFC 3161 qualified timestamps + offline proof bundles *(done:
-   `merklon-bundle/v1` + `GET /bundle` + TSA client + CLI offline `bundle` command; a
-   structured-event default `LeafCodec` codec is still open)*.
+   `merklon-bundle/v1` + `GET /bundle` + TSA client + CLI offline `bundle` command +
+   `structured-event/v1` default `LeafCodec` codec)*.
 
 ## Gotchas (Scala 3 / crypto)
 - **Byte-array equality:** never `==` on `Array[Byte]` — compare hex (`toHex`) or use

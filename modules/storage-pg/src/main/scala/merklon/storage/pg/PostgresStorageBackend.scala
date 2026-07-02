@@ -54,6 +54,33 @@ final class PostgresStorageBackend private (conn: Connection) extends StorageBac
     finally ps.close()
   }
 
+  def getEntries(from: Long, until: Long): Vector[LogEntry] = synchronized {
+    val ps = conn.prepareStatement(
+      """SELECT idx, leaf_hash, data, submitted_at FROM entries
+        |WHERE idx >= ? AND idx < ? ORDER BY idx""".stripMargin
+    )
+    try
+      ps.setLong(1, from)
+      ps.setLong(2, until)
+      val rs = ps.executeQuery()
+      val out = Vector.newBuilder[LogEntry]
+      while rs.next() do
+        out += LogEntry(rs.getLong(1), rs.getBytes(2), rs.getBytes(3), rs.getLong(4))
+      out.result()
+    finally ps.close()
+  }
+
+  def findLeafIndex(leafHash: Array[Byte]): Option[Long] = synchronized {
+    val ps = conn.prepareStatement(
+      "SELECT idx FROM entries WHERE leaf_hash = ? ORDER BY idx LIMIT 1"
+    )
+    try
+      ps.setBytes(1, leafHash)
+      val rs = ps.executeQuery()
+      if rs.next() then Some(rs.getLong(1)) else None
+    finally ps.close()
+  }
+
   def size: Long = synchronized {
     val ps = conn.prepareStatement("SELECT COUNT(*) FROM entries")
     try
@@ -181,6 +208,7 @@ object PostgresStorageBackend:
       |  data         BYTEA  NOT NULL,
       |  submitted_at BIGINT NOT NULL
       |);
+      |CREATE INDEX IF NOT EXISTS entries_leaf_hash_idx ON entries(leaf_hash);
       |CREATE TABLE IF NOT EXISTS checkpoints(
       |  id        BIGSERIAL PRIMARY KEY,
       |  origin    TEXT   NOT NULL,

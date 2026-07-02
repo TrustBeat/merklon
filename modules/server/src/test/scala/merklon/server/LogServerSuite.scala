@@ -158,7 +158,55 @@ class LogServerSuite extends munit.FunSuite:
     assertEquals(status, 400)
   }
 
-  test("GET /proof/inclusion returns 400 when leaf_index is missing") {
+  test("GET /proof/inclusion returns 400 when leaf_index and leaf_hash are both missing") {
     val (status, _) = get("/proof/inclusion?tree_size=1")
     assertEquals(status, 400)
+  }
+
+  test("inclusion by leaf_hash resolves the index and the proof verifies end-to-end") {
+    val data = "find-me-by-hash".getBytes("UTF-8")
+    val (_, appendBody) = postBytes("/entries", data)
+    val expectedIdx = raw""""leaf_index"\s*:\s*(\d+)""".r
+      .findFirstMatchIn(appendBody)
+      .map(_.group(1).toLong)
+      .getOrElse(fail(s"no leaf_index in: $appendBody"))
+    val (_, cpText) = get("/checkpoint")
+    val cp = CheckpointParser.parse(cpText).fold(e => fail(s"parse: $e"), identity)
+    val hashHex = MerkleTree.toHex(MerkleTree.leafHash(data))
+    val (status, body) = get(s"/proof/inclusion?leaf_hash=$hashHex&tree_size=${cp.treeSize}")
+    assertEquals(status, 200)
+    val proof = ProofParser.parseInclusion(body).fold(e => fail(s"proof parse: $e"), identity)
+    assertEquals(proof.leafIndex, expectedIdx)
+    assert(LogVerifier.verifyInclusion(data, proof, cp), "by-hash proof must verify")
+  }
+
+  test("inclusion by unknown leaf_hash returns 404") {
+    postBytes("/entries", "some-entry".getBytes("UTF-8"))
+    val bogus = "ab" * 32
+    val (status, _) = get(s"/proof/inclusion?leaf_hash=$bogus&tree_size=1")
+    assertEquals(status, 404)
+  }
+
+  test("GET /entries returns the submitted bytes for a range") {
+    val (_, appendBody) = postBytes("/entries", "range-entry".getBytes("UTF-8"))
+    val idx = raw""""leaf_index"\s*:\s*(\d+)""".r
+      .findFirstMatchIn(appendBody)
+      .map(_.group(1).toLong)
+      .getOrElse(fail(s"no leaf_index in: $appendBody"))
+    val (status, body) = get(s"/entries?start=$idx&end=${idx + 1}")
+    assertEquals(status, 200)
+    val b64 = java.util.Base64.getEncoder.encodeToString("range-entry".getBytes("UTF-8"))
+    assert(body.contains(s""""leaf_index":$idx"""), s"body: $body")
+    assert(body.contains(b64), s"body: $body")
+  }
+
+  test("GET /entries returns 400 for an invalid range") {
+    assertEquals(get("/entries?start=5&end=5")._1, 400)
+    assertEquals(get("/entries?start=-1&end=2")._1, 400)
+    assertEquals(get("/entries")._1, 400)
+  }
+
+  test("POST /entries rejects an oversized entry with 413") {
+    val (status, _) = postBytes("/entries", new Array[Byte](64 * 1024 + 1))
+    assertEquals(status, 413)
   }

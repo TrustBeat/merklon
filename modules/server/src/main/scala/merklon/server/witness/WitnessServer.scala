@@ -38,6 +38,8 @@ final case class WitnessedLog(origin: String, publicKey: Array[Byte])
 object WitnessServer:
 
   private val MaxProofLines = 63
+  // A well-formed request is an old line + ≤63 proof hashes + one note — far below this cap.
+  private val MaxBodyBytes = 64 * 1024
   private val B64 = Base64.getDecoder
 
   def make(
@@ -57,8 +59,15 @@ object WitnessServer:
     Routes(
       Method.POST / "add-checkpoint" ->
         Handler.fromFunctionZIO[Request] { req =>
-          req.body.asString
-            .map(body => addCheckpoint(byOrigin, body))
+          req.body.asArray
+            .map { raw =>
+              if raw.length > MaxBodyBytes then
+                Response(
+                  Status.RequestEntityTooLarge,
+                  body = Body.fromString(s"request body exceeds $MaxBodyBytes bytes")
+                )
+              else addCheckpoint(byOrigin, String(raw, "UTF-8"))
+            }
             .catchAll(e => ZIO.succeed(Response.badRequest(e.getMessage)))
         },
 
