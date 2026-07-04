@@ -1,7 +1,5 @@
 # merklon
 
-> ⚠️ **Early WIP.**
-
 A **verifiable, append-only transparency log** — a tamper-evident Merkle log with
 inclusion and consistency proofs that anyone can verify *without trusting the server*.
 
@@ -24,8 +22,10 @@ which obsoletes RFC 6962), Sigstore's Rekor, and the Go checksum database:
 - **Consistency proofs** — prove the log at size *N₁* is a prefix of the log at
   size *N₂* (nothing was reordered or removed).
 - **Signed checkpoints** — the log periodically signs `(tree_size, root_hash)`.
-- **Witnessing** *(roadmap)* — independent witnesses co-sign checkpoints to detect a
-  log that shows different histories to different clients (split-view / equivocation).
+- **Witnessing** — independent witnesses co-sign checkpoints to detect a log that shows
+  different histories to different clients (split-view / equivocation).
+- **Offline proof bundles** — a single self-contained document (entry, inclusion proof,
+  signed+cosigned checkpoint, optional RFC 3161 timestamp) that verifies with no network.
 
 ## Don't trust — verify
 
@@ -36,14 +36,13 @@ with the server, the server is wrong.
 
 ## Status
 
-Early. See the roadmap below. The Merkle core (leaf/node hashing, Merkle Tree Hash)
-and its tests are the first slice.
+**v0.1.0** — the full Layer-1 log is complete: Merkle core, Postgres persistence,
+Ed25519-signed checkpoints, HTTP serving, N-of-M witnessing (split-view detection),
+RFC 3161-sealed offline proof bundles, and a standalone independent verifier.
 
 ## Quickstart
 
-```bash
-sbt test        # runs the suite, including RFC 6962 vector checks
-```
+**Use the core as a library** — compute a Merkle Tree Hash over some entries:
 
 ```scala
 import merklon.MerkleTree
@@ -53,16 +52,46 @@ val root    = MerkleTree.root(entries)
 println(MerkleTree.toHex(root))
 ```
 
+**Run the log server** and append an entry:
+
+```bash
+sbt server/run        # starts the ZIO HTTP log server (see modules/server for env vars)
+
+curl -s -XPOST localhost:8080/entries --data-binary 'hello'   # → {"leaf_index":0,"tree_size":1}
+curl -s localhost:8080/checkpoint                             # the signed (size, root) note
+```
+
+**Verify independently** — build the standalone verifier, then check a proof without
+trusting the server (the CLI shares none of the server's state):
+
+```bash
+sbt verifier/assembly   # → modules/verifier/target/scala-3.3.4/merklon-verify.jar
+
+java -jar merklon-verify.jar --pubkey <LOG_PUBKEY_HEX> --url http://localhost:8080 \
+  inclusion 68656c6c6f          # hex("hello") — index is looked up by leaf hash
+```
+
+`merklon-verify` also checks checkpoint signatures, consistency proofs, witness
+cosignature policies (`--witness NAME=HEX --witness-threshold N`), and fully offline
+proof bundles (`bundle FILE [--tsa-cert PEM]`). Run it with no arguments for usage.
+
+```bash
+sbt test        # runs the full suite, including the RFC 6962 vector checks
+```
+
 ## Roadmap
+
+All Layer-1 phases are complete as of **v0.1.0**:
 
 - **Phase 0 — Merkle core** *(done)*: leaf/node hashing, Merkle Tree Hash,
   inclusion + consistency proofs, RFC 6962 test vectors.
-- **Phase 1 — Persistence + checkpoints**: storage backend, Ed25519-signed checkpoints,
-  a sequencer that batches entries on a cadence.
-- **Phase 2 — Serving + verifier**: HTTP API + standalone CLI verifier.
-- **Phase 3 — Witnessing**: witness service, N-of-M co-signing, split-view detection.
-- **Phase 4 — Pluggable attestation**: pluggable checkpoint attestor (incl. RFC 3161
-  qualified timestamps) and self-contained, offline-verifiable proof bundles.
+- **Phase 1 — Persistence + checkpoints** *(done)*: Postgres storage backend,
+  Ed25519-signed checkpoints, durable log key, sequencer with timed batching.
+- **Phase 2 — Serving + verifier** *(done)*: ZIO HTTP API + standalone CLI verifier.
+- **Phase 3 — Witnessing** *(done)*: c2sp tlog-witness service, N-of-M co-signing
+  (cosignature/v1), split-view detection.
+- **Phase 4 — Pluggable attestation** *(done)*: RFC 3161 qualified timestamps and
+  self-contained, offline-verifiable proof bundles.
 
 ## Design
 

@@ -1,5 +1,5 @@
 ThisBuild / scalaVersion := "3.3.4" // Scala 3 LTS
-ThisBuild / version      := "0.1.0-SNAPSHOT"
+ThisBuild / version      := "0.1.0"
 
 // Maven groupId — uses the trustbeat.eu domain (verify domain ownership on Sonatype Central).
 ThisBuild / organization := "eu.trustbeat"
@@ -69,7 +69,20 @@ lazy val verifier = project
     libraryDependencies ++= Seq(
       "org.bouncycastle" % "bcpkix-jdk18on" % bcVersion, // RFC 3161 token verification
       "org.scalameta"   %% "munit"          % munitVersion % Test
-    )
+    ),
+    // Distributable fat JAR: `sbt verifier/assembly` → merklon-verify.jar, runnable with a
+    // plain `java -jar` on any JDK 17+ (the independent verifier must not need sbt or a repo).
+    assembly / mainClass     := Some("merklon.verifier.merklon_verify"),
+    assembly / assemblyJarName := "merklon-verify.jar",
+    assembly / assemblyMergeStrategy := {
+      // Bouncy Castle ships as a signed jar; its signature files are invalid inside a
+      // repacked fat jar and must be dropped, but keep service registrations intact.
+      case PathList("META-INF", "MANIFEST.MF")              => MergeStrategy.discard
+      case PathList("META-INF", "services", _*)             => MergeStrategy.concat
+      case p if p.endsWith(".SF") || p.endsWith(".DSA") || p.endsWith(".RSA") =>
+        MergeStrategy.discard
+      case _ => MergeStrategy.first
+    }
   )
 
 lazy val root = project

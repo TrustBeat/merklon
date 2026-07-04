@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-04
+
+First public release: a complete, independently verifiable transparency log — Merkle
+core, persistence, signed checkpoints, HTTP serving, N-of-M witnessing, offline proof
+bundles with optional RFC 3161 timestamps, and a standalone verifier (library + CLI).
+
 ### Added
 - Project scaffolding: Apache-2.0 license, README, security policy, contribution
   guide (DCO), code of conduct, CI workflow.
@@ -131,6 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Ed25519 signature migration tracks the c2sp specs (ML-DSA-44) behind the existing
   attestor/note seams; long-lived offline evidence is defended by RFC 3161
   time-anchoring plus the reserved re-stamping/LTV hook.
+- Distributable verifier CLI: `sbt verifier/assembly` produces a self-contained
+  `merklon-verify.jar` runnable with `java -jar` on any JDK 17+, so the independent
+  verifier needs neither sbt nor the source tree.
 
 ### Fixed
 - Server integration test: replaced the fixed `Thread.sleep` startup wait with an active
