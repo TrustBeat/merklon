@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/OVERVIEW.md` "How the whole thing works": end-to-end Mermaid architecture
+  diagram (submitter → sequencer → Merkle tree → signed checkpoint → witnesses →
+  qualified timestamp → offline proof bundle → independent verifier) with a
+  step-by-step plain-language walkthrough.
+
 ## [0.1.0] - 2026-07-04
 
 First public release: a complete, independently verifiable transparency log — Merkle

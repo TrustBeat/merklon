@@ -41,6 +41,67 @@ If the proof checks out, the claim is true regardless of who's serving it.
 
 That's the whole point: it replaces *"trust us"* with *"check it yourself."*
 
+## How the whole thing works
+
+```mermaid
+flowchart TB
+    SUB["Submitter<br/>CI pipeline · certificate issuer · audit event source"]
+
+    subgraph operator["Log operator — runs the server, does <b>not</b> have to be trusted"]
+        API["Serving API (HTTP)"]
+        SEQ["Sequencer"]
+        TREE["Merkle tree<br/>(RFC 9162, SHA-256)"]
+        STORE[("Storage<br/>(PostgreSQL, pluggable)")]
+        CP["Checkpoint<br/>(Ed25519-signed note)"]
+    end
+
+    subgraph independent["Independent parties"]
+        WIT["Witnesses<br/>N-of-M co-signing —<br/>defeats split-view attacks"]
+        TSA["Timestamp authority<br/>(RFC 3161, optional)"]
+    end
+
+    BUNDLE["Offline proof bundle (merklon-bundle/v1)<br/>entry + inclusion proof + checkpoint<br/>+ witness cosignatures + qualified timestamp"]
+
+    VER["<b>Independent verifier</b> (library + CLI)<br/>needs only the log's and witnesses' public keys —<br/>no database access, no trust in the operator"]
+
+    SUB -- "1. submit entry" --> API
+    API -- "2. queue" --> SEQ
+    SEQ -- "3. append leaves" --> TREE
+    TREE <--> STORE
+    TREE -- "4. sign root<br/>on a cadence" --> CP
+    CP -- "5. prove consistency<br/>with previous checkpoint" --> WIT
+    WIT -. "co-signatures" .-> CP
+    CP -- "6. seal state in time" --> TSA
+    TSA -. "qualified timestamp" .-> BUNDLE
+    API -- "7. GET /bundle" --> BUNDLE
+    BUNDLE -- "8. verify fully offline" --> VER
+    VER -- "or verify online:<br/>fetch checkpoint + proofs" --> API
+```
+
+Step by step:
+
+1. A **submitter** (a build pipeline, an issuer, any event source) posts an entry to the log's
+   HTTP API.
+2. The **sequencer** queues it and, on a fixed cadence, appends pending entries to the
+   **Merkle tree**; every entry gets a permanent index and the tree gets a new root fingerprint.
+3. Entries and tree nodes are persisted through a pluggable **storage** interface
+   (PostgreSQL today).
+4. On each cadence tick the log publishes a **checkpoint** — a small signed note saying
+   *"the log now has N entries and this exact fingerprint."*
+5. Independent **witnesses** check that each new checkpoint is a pure extension of the previous
+   one (nothing rewritten) and co-sign it. A client can demand N-of-M witness signatures, so the
+   operator can't show different versions of the log to different people.
+6. Optionally, an **RFC 3161 timestamp authority** seals the checkpoint in time — proof the
+   state existed *at that moment*, strong enough for legal/compliance evidence.
+7. Anyone can export a **proof bundle**: one self-contained file with the entry, its inclusion
+   proof, the checkpoint, witness signatures, and the timestamp.
+8. The **independent verifier** checks all of it — inclusion, consistency, signatures, witness
+   policy, timestamp — using only math and public keys. Fully offline if given a bundle; no
+   database, no trust in the server.
+
+The one-line takeaway from the picture: everything inside the operator's box is *untrusted* —
+every claim it makes is checked from outside, by the witnesses and by your own verifier.
+
 ## Who it's useful for
 
 This is infrastructure, so the users are systems and the teams who run them:
