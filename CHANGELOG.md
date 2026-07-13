@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagram (submitter → sequencer → Merkle tree → signed checkpoint → witnesses →
   qualified timestamp → offline proof bundle → independent verifier) with a
   step-by-step plain-language walkthrough.
+- SPEC §7.5 "Witness deployment requirements": one witness key MUST be served by
+  exactly one process (no horizontal replication of a key — replicas can equivocate);
+  scale by adding independent witnesses; witnesses counted toward the N-of-M policy
+  must be operationally independent of the log operator.
 
 ## [0.1.0] - 2026-07-04
 

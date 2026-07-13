@@ -275,6 +275,32 @@ unverifiable lines are ignored (consistent with §3.1 tolerance). Implemented by
 `merklon.WitnessPolicy`; exposed in the CLI verifier as
 `--witness NAME=HEX_PUBKEY … [--witness-threshold N]` (default threshold: all listed).
 
+### 7.5 Witness deployment requirements
+
+**One witness key, one process.** A witness key MUST be served by exactly one process at a
+time, holding exclusive ownership of its durable state (§7.1). The append-only guarantee a
+witness attests to is enforced by serializing all observations against a single last-cosigned
+checkpoint; two replicas of the same key with independent state can each cosign a *different*
+root at the same tree size — making the witness itself equivocate, and turning its own
+signatures into §7.1-style misbehavior evidence against it.
+
+Consequences:
+
+- A witness MUST NOT be horizontally replicated (e.g. multiple instances of one key behind a
+  load balancer). Failover MUST be active/passive with the durable state handed over — never
+  two live signers.
+- Witnessing scales by adding **more witnesses with distinct keys** — which also strengthens
+  the N-of-M policy (§7.4) — never by replicating one key. Throughput is not a concern: a
+  witness performs one verification and one signature per checkpoint interval.
+- The split-view guarantee of §7.4 additionally assumes witnesses are **operationally
+  independent of the log and of each other** (separate operators, infrastructure, and key
+  custody). Witnesses run by the log operator protect only against server compromise, not
+  against a dishonest operator, and MUST NOT be counted toward N by a client that does not
+  trust the operator.
+
+(A replicated single-key witness would require a `WitnessStateStore` backend with an atomic
+compare-and-swap; this is deliberately out of scope.)
+
 ## 8. Proof bundle (offline-verifiable, Phase 4)
 
 A self-contained artifact a relying party verifies **fully offline** with the CLI verifier
