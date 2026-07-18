@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   witness server, and verifier.
 
 ### Changed
+- README + DESIGN: explicit ML-DSA-44 roadmap line — planned when the JDK 25 LTS becomes the
+  project baseline; accelerated if a shared witness network requires it for onboarding.
 - **Witness conformance with c2sp.org/tlog-witness as of 2026-07** (the upstream spec changed
   after v0.1.0; SPEC §7.1/§7.3):
   - a same-size, different-root submission (split view) now returns **422** instead of 409 —

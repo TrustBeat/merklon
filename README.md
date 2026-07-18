@@ -103,6 +103,11 @@ All Layer-1 phases are complete as of **v0.1.0**:
 - **Phase 4 — Pluggable attestation** *(done)*: RFC 3161 qualified timestamps and
   self-contained, offline-verifiable proof bundles.
 
+**Next — post-quantum signatures:** ML-DSA-44 cosignatures (the c2sp `0x06` type), planned
+for when the JDK 25 LTS becomes the project baseline — the JDK ships ML-DSA natively, so the
+core stays dependency-free. The SHA-256 Merkle proofs themselves are already post-quantum
+safe; see the post-quantum posture section in [DESIGN.md](docs/DESIGN.md).
+
 ## Design
 
 Hash-agnostic, dependency-light core with clean extension points

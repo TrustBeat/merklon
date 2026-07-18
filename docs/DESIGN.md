@@ -169,6 +169,11 @@ years** (proof bundles), where a future forger holding a broken key must not be 
   by key-ID type byte, and verification is centralized (`Ed25519.verify`, `CosignatureV1.verify`,
   `WitnessPolicy`). The JDK ships **ML-DSA** since Java 24 (in the 25 LTS), so a PQ attestor
   needs no new crypto library — consistent with the "JDK + vetted libraries" rule.
+  **Roadmap:** implement ML-DSA-44 cosignatures (signature type `0x06`) when the **JDK 25 LTS
+  becomes the project baseline**, keeping the core dependency-free. Accelerate if a shared
+  witness network (witness-network.org, Sigstore's witness config) makes ML-DSA support an
+  onboarding requirement — today the deployed ecosystem, merklon included, runs Ed25519
+  cosignature/v1 (a MAY).
 - **Qualified timestamps — classical today, designed for re-sealing.** RFC 3161 TSAs currently
   sign with RSA/ECDSA; the token's message imprint is SHA-256 and stays sound. The archival
   answer is the **re-stamping / LTV extension point** (table above): periodically re-seal
