@@ -5,6 +5,14 @@ inclusion and consistency proofs that anyone can verify *without trusting the se
 
 [![CI](https://github.com/TrustBeat/merklon/actions/workflows/ci.yml/badge.svg)](https://github.com/TrustBeat/merklon/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Scala 3](https://img.shields.io/badge/Scala-3.3%20LTS-de3423.svg)](https://www.scala-lang.org/)
+[![RFC 9162](https://img.shields.io/badge/RFC-9162-lightgrey.svg)](https://www.rfc-editor.org/rfc/rfc9162)
+
+*Certificate-Transparency-style verifiable log for the JVM: Merkle tree proofs
+(RFC 9162 / RFC 6962), signed checkpoints, N-of-M witness co-signing, RFC 3161
+qualified timestamps, and offline-verifiable proof bundles — in pure Scala 3.*
+
+New to transparency logs? Start with the **[plain-language overview](docs/OVERVIEW.md)**.
 
 ---
 
@@ -98,6 +106,17 @@ All Layer-1 phases are complete as of **v0.1.0**:
 Hash-agnostic, dependency-light core with clean extension points
 (`CheckpointAttestor`, `LeafCodec`, `StorageBackend`, `AppendAuthorizer`) so the log
 can be embedded in different contexts without forking.
+
+- **[Overview](docs/OVERVIEW.md)** — how the whole thing works, in plain language.
+- **[Design](docs/DESIGN.md)** — architecture, actors, extension points, PQ posture.
+- **[Spec](docs/SPEC.md)** — wire formats: checkpoint note, proofs, bundles, HTTP API.
+
+## About
+
+merklon is built and maintained by **[Trustbeat](https://trustbeat.eu)**, makers of
+European timestamping and log-anchoring infrastructure. Proof bundles already carry
+RFC 3161 timestamps — if you need **legally valid, eIDAS-qualified timestamps** on
+your checkpoints and evidence, see **[trustbeat.eu](https://trustbeat.eu)**.
 
 ## Security
 

@@ -8,7 +8,7 @@ override default behavior — follow them.
 (RFC 9162 style) with inclusion and consistency proofs that anyone can verify *without
 trusting the server*. Open source, Apache-2.0, © Trustbeat s.r.o.
 
-Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md` (in progress).
+Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md`.
 
 ## Core philosophy — read before writing code
 - **Correctness IS the product.** A transparency log that is subtly wrong is worse than
@@ -47,7 +47,7 @@ Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md` (i
 - Standard test vectors live in `modules/core/src/test/scala/merklon/`
 - `docs/DESIGN.md` — public architecture, scope, roadmap (business strategy split out to the
   gitignored `docs/STRATEGY.private.md` — never publish that file)
-- `docs/SPEC.md` — wire formats: checkpoint note, proofs, witnessing, API (draft)
+- `docs/SPEC.md` — wire formats: checkpoint note, proofs, witnessing, API (implemented; frozen at v1.0)
 
 ## Commands
 ```bash
@@ -82,7 +82,7 @@ sbt scalafmtCheckAll   # verify formatting (CI gate)
   `java.util.Arrays.equals`.
 - **RFC 9162 split point** `k` = largest power of two **strictly less than** `n`
   (`Integer.highestOneBit(n - 1)`).
-- **ASN.1/DER (once the RFC 3161 attestor lands):** build with `ASN1EncodableVector` then
+- **ASN.1/DER (RFC 3161 code in server/verifier):** build with `ASN1EncodableVector` then
   `.getEncoded()`; `DERSequence(Array(...))` fails on array invariance.
 
 ## Commits

@@ -1,9 +1,10 @@
-# merklon — Design Notes (Verifiable Transparency Log)
+# merklon — Design (Verifiable Transparency Log)
 
-> Working notes consolidating the architecture discussion. A **standalone, open-source**
-> verifiable transparency log, built with clean extension points so downstream applications can
-> plug into the core without forking it. Build the core for its own sake (and reputation);
-> downstream applications are a deferred, optional layer on top.
+> Architecture and design rationale for merklon: a **standalone, open-source** verifiable
+> transparency log with clean extension points, so downstream applications can plug into the
+> core without forking it. The core stands on its own — usable and verifiable with zero
+> knowledge of anything built on top. Wire formats: [`SPEC.md`](SPEC.md) · plain-language
+> introduction: [`OVERVIEW.md`](OVERVIEW.md).
 
 ---
 
@@ -77,18 +78,18 @@ static-file/tiled possible); verifying → no DB, no trust.**
 The core stays generic; downstream applications attach behavior through these hooks instead of
 forking. Each is an interface in Layer 1 with a sensible default.
 
-| Hook | What it is | Why a downstream app might need it | Now? |
+| Hook | What it is | Why a downstream app might need it | Status |
 |---|---|---|---|
-| **`CheckpointAttestor`** | Pluggable signer over each checkpoint root. Default = log Ed25519 key. | A stronger attestor — e.g. a qualified RFC 3161 timestamp → "this state existed at this time." | **Build (cheap)** |
+| **`CheckpointAttestor`** | Pluggable signer over each checkpoint root. Default = log Ed25519 key. | A stronger attestor — e.g. a qualified RFC 3161 timestamp → "this state existed at this time." | ✅ **built** (Ed25519 default; RFC 3161 TSA sealing, SPEC §8) |
 | **`LeafCodec`** | Core stores opaque `data`; codec defines `leaf = H(canonical(event))`. | A structured event envelope (actor, action, ts, source, prev_ref). | ✅ **built** (`structured-event/v1`, SPEC §9) |
-| **`ProofBundle` export** | Self-contained offline-verifiable package: entry + inclusion proof + checkpoint + witness sigs + attestations. | The artifact a relying party verifies offline (offline-verify experience). | **Build (cheap, high value)** |
-| **`StorageBackend`** | Interface over persistence. | Isolated / tiled storage for different deployments. | **Design interface now** |
-| **Tenant/origin namespacing** | Each checkpoint carries a log identity/origin. | Multiple independent logs (one per system/origin). | **Reserve field; don't build** |
-| **`AppendAuthorizer`** | Pluggable auth on write path. Default = none. | Authenticated ingestion. | **Design iface; default no-op** |
-| **Re-stamping / LTV** | Periodic re-timestamp of historical checkpoints. | Logs retained for years must stay verifiable after signing certs expire. | **Design for it; defer build** |
+| **`ProofBundle` export** | Self-contained offline-verifiable package: entry + inclusion proof + checkpoint + witness sigs + attestations. | The artifact a relying party verifies offline (offline-verify experience). | ✅ **built** (`merklon-bundle/v1`, SPEC §8; `GET /bundle` + CLI `bundle`) |
+| **`StorageBackend`** | Interface over persistence. | Isolated / tiled storage for different deployments. | ✅ **built** (in-memory + Postgres; tiled backend possible later) |
+| **Tenant/origin namespacing** | Each checkpoint carries a log identity/origin. | Multiple independent logs (one per system/origin). | **Reserved** (origin line in the checkpoint note; multi-log not built) |
+| **`AppendAuthorizer`** | Pluggable auth on write path. Default = none. | Authenticated ingestion. | ✅ **built** (interface; default no-op) |
+| **Re-stamping / LTV** | Periodic re-timestamp of historical checkpoints. | Logs retained for years must stay verifiable after signing certs expire. | **Designed for; build deferred** |
 
-Rule: **interfaces in now, implementation deferred** — except the qualified-TS attestor and the proof
-bundle, which are cheap and are exactly what differentiate this log from every generic one.
+Rule: **interfaces in now, implementation deferred** — except where an implementation is cheap and
+differentiating (the qualified-TS attestor and the proof bundle both were, and are built).
 
 ### Data model (core)
 ```
@@ -180,14 +181,7 @@ time-anchoring, which is why the RFC 3161 + re-stamping hooks exist.**
 
 ---
 
-## 2. Next step (open)
-Two options:
-- **(a)** Write the **Phase 0 core** — Merkle tree + inclusion/consistency proofs + test-vector suite.
-- **(b)** Draft the **spec** (`docs/SPEC.md`: data formats, checkpoint/note format, API) so wire formats
-  and proof semantics are nailed before cutting code. *Recommended first* — the formats are the part you
-  don't want to redo.
-
-## 3. Reference points
+## 2. Reference points
 - RFC 9162 (Certificate Transparency 2.0; obsoletes RFC 6962) — Merkle log hashing, inclusion/consistency proofs
 - Trillian (general verifiable log), Sigstore Rekor (transparency log + supply chain)
 - "tlog-tiles" / Sunlight (Filippo Valsorda / Let's Encrypt) — static-file tile-based modern CT log

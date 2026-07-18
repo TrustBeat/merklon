@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- README: keyword tagline, Scala/RFC badges, docs links (incl. the plain-language
+  overview), and an About section linking to [trustbeat.eu](https://trustbeat.eu).
+- DESIGN.md: removed the stale pre-Phase-0 "Next step" section; extension-point table
+  now shows built/reserved status instead of build-order planning notes.
+
 ### Added
 - `docs/OVERVIEW.md` "How the whole thing works": end-to-end Mermaid architecture
   diagram (submitter → sequencer → Merkle tree → signed checkpoint → witnesses →

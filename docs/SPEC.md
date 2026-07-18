@@ -1,8 +1,9 @@
 # merklon — Wire Format & API Specification
 
-> **Status: DRAFT / in progress.** Nail these formats before implementing Phase 1+ — they are
-> expensive to change once real data exists and once external witnesses/verifiers depend on them.
-> This file is the home for the "spec-first" step.
+> **Status: implemented (v0.1.0), not yet frozen.** Every format below is implemented and
+> tested. Wire-format stability will be declared at v1.0; until then changes are expected to be
+> additive only — they are expensive once real data exists and once external
+> witnesses/verifiers depend on them.
 
 ## 0. Conventions
 
