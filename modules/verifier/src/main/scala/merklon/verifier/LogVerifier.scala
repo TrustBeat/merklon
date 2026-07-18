@@ -3,7 +3,7 @@
 
 package merklon.verifier
 
-import merklon.{Checkpoint, CheckpointNote, Ed25519, LeafCodec, MerkleTree}
+import merklon.{Checkpoint, CheckpointNote, LeafCodec, MerkleTree}
 
 /** Pure independent verifier — no server trust required.
   *
@@ -12,14 +12,15 @@ import merklon.{Checkpoint, CheckpointNote, Ed25519, LeafCodec, MerkleTree}
   */
 object LogVerifier:
 
-  /** Verify that at least one signature in `cp` was produced by `rawPublicKey` over the note body.
+  /** Verify the log's signature on `cp` under the strict signed-note rule
+    * ([[CheckpointNote.verifyLogSignatures]]): at least one signature line from the trusted key
+    * must verify, and a failing line that claims the trusted key rejects the whole note.
     *
     * @param rawPublicKey
     *   raw 32-byte Ed25519 public key (not DER-wrapped)
     */
   def verifyCheckpointSignature(cp: Checkpoint, rawPublicKey: Array[Byte]): Boolean =
-    val body = CheckpointNote.noteBody(cp).getBytes("UTF-8")
-    cp.signatures.exists(sig => Ed25519.verify(rawPublicKey, body, sig.sig))
+    CheckpointNote.verifyLogSignatures(cp, rawPublicKey)
 
   /** Verify that `entry` (the raw submitted bytes) is included at `proof.leafIndex` in `cp`.
     * `codec` must match the log's configured `LeafCodec` — the leaf hash is recomputed over the

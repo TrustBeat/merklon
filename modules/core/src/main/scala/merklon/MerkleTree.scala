@@ -23,6 +23,10 @@ object MerkleTree:
   private def sha256(bytes: Array[Byte]): Array[Byte] =
     MessageDigest.getInstance("SHA-256").digest(bytes)
 
+  /** MTH of the empty tree: SHA-256 of the empty string (RFC 9162 §2.1.1). */
+  def emptyRoot: Array[Byte] =
+    sha256(Array.emptyByteArray)
+
   /** RFC 9162 §2.1.1 leaf hash: SHA-256(0x00 || data). */
   def leafHash(data: Array[Byte]): Array[Byte] =
     sha256(Array(0x00.toByte) ++ data)

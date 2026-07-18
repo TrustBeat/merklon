@@ -46,6 +46,20 @@ object CheckpointNote:
     md.update(publicKey)
     md.digest().take(4)
 
+  /** Strict signed-note validation of the log's signature(s) on `cp`, per c2sp.org/signed-note and
+    * tlog-witness: a signature line is "from the known key" when its key ID equals the Ed25519
+    * key-ID formula over its own key name and the trusted public key — and every such line MUST
+    * verify; a single failing one makes the whole note malformed. Lines whose ID does not match are
+    * unknown keys and are ignored (this includes cosignature lines, whose IDs use a different type
+    * byte). True iff at least one known-key line is present and all of them verify.
+    */
+  def verifyLogSignatures(cp: Checkpoint, publicKey: Array[Byte]): Boolean =
+    val body = noteBody(cp).getBytes("UTF-8")
+    val known = cp.signatures.filter { s =>
+      java.util.Arrays.equals(s.keyId, keyId(s.keyName, publicKey))
+    }
+    known.nonEmpty && known.forall(s => Ed25519.verify(publicKey, body, s.sig))
+
   def noteBody(origin: String, treeSize: Long, rootHash: Array[Byte]): String =
     s"$origin\n$treeSize\n${Encoder.encodeToString(rootHash)}\n"
 

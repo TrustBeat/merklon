@@ -149,6 +149,72 @@ class WitnessSuite extends munit.FunSuite:
     )
   }
 
+  test("size-zero checkpoint must carry the empty-tree root (tlog-witness)") {
+    val attestor = CheckpointAttestor.generateEd25519(origin)
+    def signed(root: Array[Byte]): Checkpoint =
+      val body = CheckpointNote.noteBody(origin, 0L, root).getBytes("UTF-8")
+      val sig = NoteSignature(attestor.keyName, attestor.keyId, attestor.sign(body))
+      Checkpoint(origin, 0L, root, 0L, Vector(sig))
+
+    val witness = Witness("witness.test/w1", keyPair(), origin, attestor.publicKey)
+    assert(witness.observe(signed(Array.fill[Byte](32)(0x42)), Nil) match
+      case Left(WitnessRefusal.InvalidCheckpoint(_, _)) => true
+      case _                                            => false
+    )
+    // With the genuine empty-tree root it is cosignable (TOFU).
+    assert(witness.observe(signed(MerkleTree.emptyRoot), Nil).isRight)
+  }
+
+  test("non-empty consistency proof is refused when none is possible (tlog-witness)") {
+    val log = freshLog()
+    val bogusProof = List(Array.fill[Byte](32)(0x01))
+
+    // First observation: nothing cosigned yet, so no proof can exist.
+    val w1 = Witness("witness.test/w1", keyPair(), origin, log.attestor.publicKey)
+    log.append("a", "b")
+    assert(w1.observe(log.checkpoint(), bogusProof) match
+      case Left(WitnessRefusal.InvalidCheckpoint(_, _)) => true
+      case _                                            => false
+    )
+    assert(w1.observe(log.checkpoint(), Nil).isRight)
+
+    // Extending from cosigned size 0: the empty tree is a prefix of every tree — no proof.
+    val emptyLog = freshLog()
+    val w2 = Witness("witness.test/w2", keyPair(), origin, emptyLog.attestor.publicKey)
+    assert(w2.observe(emptyLog.checkpoint(), Nil).isRight) // size 0, empty root
+    emptyLog.append("a", "b", "c")
+    assert(w2.observe(emptyLog.checkpoint(), bogusProof) match
+      case Left(WitnessRefusal.InvalidCheckpoint(_, _)) => true
+      case _                                            => false
+    )
+    assert(w2.observe(emptyLog.checkpoint(), Nil).isRight)
+  }
+
+  test("a failing signature line matching the trusted key's name and ID poisons the note") {
+    val log = freshLog()
+    val witness = Witness("witness.test/w1", keyPair(), origin, log.attestor.publicKey)
+    log.append("a", "b")
+    val cp = log.checkpoint()
+
+    // Valid log signature + a forged line under the SAME key name and ID: strict signed-note
+    // validation must reject the whole note, even though one signature verifies.
+    val forged =
+      NoteSignature(log.attestor.keyName, log.attestor.keyId, Array.fill[Byte](64)(0x13))
+    val poisoned = cp.copy(signatures = cp.signatures :+ forged)
+    assert(witness.observe(poisoned, Nil) match
+      case Left(WitnessRefusal.InvalidLogSignature(_)) => true
+      case _                                           => false
+    )
+
+    // A line with the same name but a DIFFERENT key ID is an unknown key: ignored, note accepted.
+    val unknownId = NoteSignature(
+      log.attestor.keyName,
+      Array[Byte](0x00, 0x01, 0x02, 0x03),
+      Array.fill[Byte](64)(0x13)
+    )
+    assert(witness.observe(cp.copy(signatures = cp.signatures :+ unknownId), Nil).isRight)
+  }
+
   test("checkpoint without a valid log signature is refused") {
     val log = freshLog()
     val witness = Witness("witness.test/w1", keyPair(), origin, log.attestor.publicKey)

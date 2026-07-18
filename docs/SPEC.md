@@ -64,13 +64,16 @@ each terminated by a single `\n`:
 [<extension line>...]
 ```
 
-1. **origin** — a schema-less, stable identifier for *this log's identity*. It MUST NOT contain
-   spaces or `+`. merklon convention: a host/path label, e.g. `merklon.example/log`. (Reserved as
-   the per-log "tenant/origin" field from `docs/DESIGN.md`.)
+1. **origin** — a schema-less, stable identifier for *this log's identity*. It MUST be non-empty;
+   per [c2sp.org/tlog-checkpoint] it SHOULD be a schema-less URL containing neither spaces nor
+   `+`. merklon logs always follow that recommendation: a host/path label, e.g.
+   `merklon.example/log`. (Reserved as the per-log "tenant/origin" field from `docs/DESIGN.md`.)
 2. **tree_size** — ASCII decimal count of leaves, no leading zeros (`0` for the empty tree).
 3. **root_hash** — standard base64 of the 32-byte RFC 9162 Merkle Tree Hash at `tree_size`.
 4. **extension lines** *(OPTIONAL)* — opaque additional lines; verifiers that don't understand
-   them MUST ignore them. Reserved for future use (e.g. timestamp hints).
+   them MUST ignore them. Their use is NOT RECOMMENDED upstream (they are not auditable by
+   monitors and cosignature semantics exclude them) — merklon never emits any; qualified
+   timestamps travel in the proof bundle (§8), not as note lines.
 
 ### 3.2 Signatures
 
@@ -90,6 +93,11 @@ one or more signature lines:
   signature lines carry **witness** cosignatures and other attestors. Witness lines use the
   cosignature/v1 format (§7.2), whose signed message and key-ID type byte differ from the plain
   log signature described here.
+- **Strict verification** (c2sp.org/signed-note): a signature line is *from a known key* when its
+  key ID matches the key-ID formula over its own key name and a trusted public key. Every
+  known-key line MUST verify — one failing known-key line makes the whole note invalid — and
+  lines from unknown keys are ignored. merklon's witness and verifier both enforce this; a note
+  is accepted only if at least one known-key line is present and all of them verify.
 
 ### 3.3 Example
 
@@ -173,6 +181,7 @@ as cacheable static files — reserved for a later iteration.
 | `GET /proof/inclusion?tree_size=&(leaf_index= \| leaf_hash=)` | Inclusion proof against a tree size. `leaf_hash` (hex) mirrors RFC 9162 `get-proof-by-hash`: the lowest matching index is resolved and echoed back; clients compute the hash locally over the codec's canonical form (§9). | §4.1. `404` for an unknown hash. |
 | `GET /proof/consistency?first=&second=` | Consistency proof between two sizes. | §5.1 |
 | `GET /bundle?leaf_index=` | Offline-verifiable proof bundle for one entry, against the latest checkpoint. | §8. `404` if the leaf is not yet integrated; `502` if a TSA is configured but unreachable (never a silently unsealed bundle). |
+| `GET /tlog-proof?leaf_index=` | The same entry's proof as a **c2sp.org/tlog-proof@v1** document (§8.4) — the ecosystem interchange format; carries no entry bytes and no RFC 3161 token. | `text/plain` tlog-proof. `404` if the leaf is not yet integrated. |
 
 ### 6.1 Error model
 
@@ -202,17 +211,19 @@ get both histories cosigned by the same honest witness.
 For each observed checkpoint, a witness MUST, in order:
 
 1. Check the checkpoint's `origin` is one it watches; otherwise refuse.
-2. Verify at least one signature on the note verifies under the log's public key (§3.2);
-   otherwise refuse.
-3. Compare against the last checkpoint it cosigned for this origin:
-   - **First observation:** cosign (trust-on-first-use — the witness's attestation window
-     starts here).
+2. Validate the log's signature under the **strict** signed-note rule (§3.2): at least one
+   known-key line verifies and no known-key line fails; otherwise refuse.
+3. If `tree_size` is 0, the root MUST be the empty-tree root (`SHA-256("")`); otherwise refuse.
+4. Compare against the last checkpoint it cosigned for this origin:
+   - **First observation:** the supplied consistency proof MUST be empty (nothing to prove
+     from); cosign (trust-on-first-use — the witness's attestation window starts here).
    - **Same `tree_size`:** the root hashes MUST be identical; a differing root is a
      **split view** and MUST be refused.
    - **Larger `tree_size`:** the log supplies an RFC 9162 consistency proof from the cosigned
-     size; the witness verifies it (§5.2) and refuses a failure as a **history rewrite**.
+     size; the witness verifies it (§5.2) and refuses a failure as a **history rewrite**. From
+     cosigned size 0 the proof MUST be empty (the empty tree is a prefix of every tree).
    - **Smaller `tree_size`:** refuse — a transparency log never shrinks.
-4. On success, produce a **cosignature/v1** (§7.2) and return its signature line. The log
+5. On success, produce a **cosignature/v1** (§7.2) and return its signature line. The log
    appends witness signature lines to the same note after its own.
 
 The witness's last-cosigned checkpoint MUST be durable; losing it silently resets the witness
@@ -253,19 +264,23 @@ Responses:
 |---|---|
 | 200 | Cosigned; body is the witness's cosignature line(s) (§7.2). |
 | 400 | Malformed request, or `old` exceeds the submitted checkpoint's size. |
-| 403 | No signature on the note verifies under the log's trusted key. |
+| 403 | No known-key signature on the note verifies, or a known-key line fails to verify (strict rule, §3.2). |
 | 404 | The note's origin is not watched by this witness. |
-| 409 | `old` differs from the witness's latest cosigned size — body is that size (ASCII decimal + `\n`, `Content-Type: text/x.tlog.size`); the submitter retries with the returned size. Also returned for a same-size, different-root submission (split view). |
-| 422 | The consistency proof does not verify (history rewrite). |
+| 409 | `old` differs from the witness's latest cosigned size — body is that size (ASCII decimal + `\n`, `Content-Type: text/x.tlog.size`); the submitter retries with the returned size. |
+| 422 | The consistency proof does not verify (history rewrite); a same-size, different-root submission (**split view**); a size-zero checkpoint without the empty-tree root; or a non-empty proof where none is possible (§7.1 steps 3–4). |
+
+(Split view moved from 409 to 422 to track the upstream tlog-witness change of 2026-07-06 —
+409 is now exclusively the size-negotiation response.)
 
 Monitoring: `GET <prefix>/<hex(SHA-256(origin))>/checkpoint` returns the latest cosigned note
 (log + witness signatures) or 404. Implemented by `merklon.server.witness.WitnessServer`
 (service) and `merklon.server.WitnessClient` (log-side submission with 409 size negotiation).
 
 **Deviations / TODO:** the c2sp spec's optional `sign-subtree` endpoint is not implemented;
-ML-DSA cosignatures (SHOULD in the spec) await JDK/BC support — merklon uses Ed25519
-cosignature/v1; notes with extension lines (§3.1) are currently refused by the witness because
-the body is reconstructed from parsed fields (fails closed).
+ML-DSA-44 cosignatures (upstream SHOULD — for witnesses, and per tlog-checkpoint now for log
+signatures too) await JDK/BC support — merklon uses Ed25519 cosignature/v1 (a MAY); notes with
+extension lines (§3.1) are currently refused by the witness because the body is reconstructed
+from parsed fields (fails closed).
 
 ### 7.4 Client policy (N-of-M)
 
@@ -362,6 +377,32 @@ bundle is sealed with a token from that RFC 3161 TSA (one TSA round-trip per che
 are cached and reused until the checkpoint advances). If the TSA cannot produce a token the
 export fails with `502` rather than serving an unsealed bundle.
 
+### 8.4 Ecosystem interchange: `c2sp.org/tlog-proof@v1`
+
+Alongside the merklon-native bundle, the log exports the standardized
+**[c2sp.org/tlog-proof]** format (`GET /tlog-proof?leaf_index=N`, `text/plain`; files SHOULD
+use the `.tlog-proof` extension):
+
+```
+c2sp.org/tlog-proof@v1
+[extra <base64>]
+index <leaf index>
+<base64 inclusion-proof hash>...
+
+<checkpoint signed note (§3), verbatim, incl. cosignatures>
+```
+
+Differences from `merklon-bundle/v1`: a tlog-proof carries **no entry bytes** (the relying
+party supplies them out of band) and **no RFC 3161 token**; the optional `extra` line is opaque
+and **not authenticated**. Use the bundle when the artifact must be self-contained legal
+evidence; use tlog-proof to interoperate with other transparency-log tooling ("transparent
+signatures").
+
+Offline verification (CLI: `tlog-proof FILE DATA_HEX`; library:
+`merklon.verifier.TlogProofVerifier`) checks, in order: document syntax; the embedded note's
+log signature (strict rule, §3.2); the witness policy (§7.4), when configured; and the
+inclusion proof of the supplied entry bytes under the log's codec (§9).
+
 ## 9. Structured event codec (`structured-event/v1`)
 
 The core stores opaque bytes; a `LeafCodec` defines what gets leaf-hashed:
@@ -416,12 +457,19 @@ Implemented by `merklon.StructuredEvent` / `LeafCodec.StructuredEventJsonV1`.
   consistency proofs and their verification algorithms
 - RFC 8032 — Ed25519 signatures
 - RFC 4648 — base64 encoding
-- [c2sp.org/tlog-checkpoint] — checkpoint format
-- [c2sp.org/signed-note] — signed note format (signatures, key IDs)
+- [c2sp.org/tlog-checkpoint] — checkpoint format (pinned upstream as `tlog-checkpoint@v1.0.0`)
+- [c2sp.org/signed-note] — signed note format (signatures, key IDs; pinned upstream as
+  `signed-note@v1.0.0`)
+- [c2sp.org/tlog-cosignature] — cosignature/v1 (and the ML-DSA-44 type merklon does not yet ship)
+- [c2sp.org/tlog-witness] — witness HTTP protocol (§7.3; conformance tracked as of 2026-07)
+- [c2sp.org/tlog-proof] — offline proof interchange format (§8.4)
 - [c2sp.org/tlog-tiles] — static tile-based log layout (Sunlight model)
 - transparency.dev — checkpoint & witness specs
 - `golang.org/x/mod/sumdb/tlog` — Go checksum DB transparency log (clean reference)
 
 [c2sp.org/tlog-checkpoint]: https://c2sp.org/tlog-checkpoint
 [c2sp.org/signed-note]: https://c2sp.org/signed-note
+[c2sp.org/tlog-cosignature]: https://c2sp.org/tlog-cosignature
+[c2sp.org/tlog-witness]: https://c2sp.org/tlog-witness
+[c2sp.org/tlog-proof]: https://c2sp.org/tlog-proof
 [c2sp.org/tlog-tiles]: https://c2sp.org/tlog-tiles

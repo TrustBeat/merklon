@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `c2sp.org/tlog-proof@v1` support — the ecosystem's offline proof interchange format
+  ("transparent signatures", SPEC §8.4): core render/parse (`merklon.TlogProofCodec`),
+  `GET /tlog-proof?leaf_index=N` export on the log server, offline verification in the
+  verifier library (`TlogProofVerifier`) and CLI (`tlog-proof FILE DATA_HEX`). Unlike
+  `merklon-bundle/v1` it carries no entry bytes and no RFC 3161 token.
+- `MerkleTree.emptyRoot` — the RFC 9162 empty-tree hash, and
+  `CheckpointNote.verifyLogSignatures` — strict signed-note validation shared by the witness,
+  witness server, and verifier.
+
 ### Changed
+- **Witness conformance with c2sp.org/tlog-witness as of 2026-07** (the upstream spec changed
+  after v0.1.0; SPEC §7.1/§7.3):
+  - a same-size, different-root submission (split view) now returns **422** instead of 409 —
+    409 is exclusively the `old`-size negotiation response (upstream change of 2026-07-06);
+  - a size-zero checkpoint MUST carry the empty-tree root, else 422;
+  - a non-empty consistency proof where none is possible (first observation, or extending from
+    cosigned size 0) is refused with 422 instead of being ignored;
+  - strict signed-note signature validation: a signature line matching the trusted key's name
+    and ID that fails to verify now invalidates the whole note (403), even when another line
+    verifies — applied by the witness, the witness server, and the independent verifier;
+  - new `WitnessRefusal.InvalidCheckpoint` refusal carrying the protocol-rule reason.
 - README: keyword tagline, Scala/RFC badges, docs links (incl. the plain-language
   overview), and an About section linking to [trustbeat.eu](https://trustbeat.eu).
 - DESIGN.md: removed the stale pre-Phase-0 "Next step" section; extension-point table

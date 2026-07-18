@@ -24,6 +24,8 @@ import java.util.HexFormat
   * Commands (offline):
   *   - bundle FILE verify a merklon-bundle/v1 document (SPEC.md §8) without contacting the log;
   *     `--tsa-cert PEM_FILE` additionally verifies the bundle's RFC 3161 timestamp token signer
+  *   - tlog-proof FILE DATA_HEX verify a c2sp.org/tlog-proof@v1 document against hex-encoded entry
+  *     bytes supplied out of band (the format carries no entry data)
   *
   * Witness policy (applies to every command when present):
   *   - `--witness NAME=HEX_PUBKEY` (repeatable) — a trusted witness
@@ -124,13 +126,20 @@ import java.util.HexFormat
     case "bundle" :: path :: _ =>
       runBundle(path, rawPub, policy, tsaCert, codec)
 
+    case "tlog-proof" :: path :: dataHex :: _ =>
+      val data =
+        try HexFormat.of().parseHex(dataHex)
+        catch case _: Exception => die(s"data must be hex-encoded: $dataHex")
+      runTlogProof(path, data, rawPub, policy, codec)
+
     case other =>
       val cmd = other.headOption.getOrElse("(none)")
       die(
         s"unknown command: $cmd\n" +
           "usage: merklon-verify --pubkey HEX [--url URL] " +
           "[--witness NAME=HEX]... [--witness-threshold N] [--tsa-cert PEM_FILE] [--codec NAME] " +
-          "checkpoint | inclusion INDEX DATA_HEX | consistency OLD_SIZE OLD_ROOT_HEX | bundle FILE"
+          "checkpoint | inclusion INDEX DATA_HEX | consistency OLD_SIZE OLD_ROOT_HEX | " +
+          "bundle FILE | tlog-proof FILE DATA_HEX"
       )
 
 /** The client-side N-of-M witness policy selected on the command line. */
@@ -263,6 +272,32 @@ private def runBundle(
           )
       }
       println("OK  bundle verified offline")
+
+/** Verify a c2sp.org/tlog-proof@v1 document fully offline against out-of-band entry bytes. */
+private def runTlogProof(
+    path: String,
+    data: Array[Byte],
+    rawPub: Array[Byte],
+    policy: WitnessRequirement,
+    codec: LeafCodec
+): Unit =
+  val text =
+    try Files.readString(Paths.get(path))
+    catch case e: Exception => die(s"cannot read tlog-proof file: ${e.getMessage}")
+  TlogProofVerifier.verify(text, data, rawPub, policy.trusted, policy.threshold, codec) match
+    case Left(err) => die(s"FAIL  $err")
+    case Right(r) =>
+      println(s"OK  checkpoint tree_size=${r.checkpoint.treeSize} signature valid")
+      if policy.trusted.nonEmpty then
+        println(
+          s"OK  witness policy: ${r.cosigners.size}/${policy.trusted.size} valid cosignatures" +
+            s" (threshold ${policy.threshold}): ${r.cosigners.toList.sorted.mkString(", ")}"
+        )
+      println(s"OK  index ${r.leafIndex} included in tree_size=${r.checkpoint.treeSize}")
+      r.extra.foreach(e =>
+        println(s"--  extra data present (${e.length} bytes, NOT authenticated)")
+      )
+      println("OK  tlog-proof verified offline")
 
 private def die(msg: String): Nothing =
   System.err.println(msg)

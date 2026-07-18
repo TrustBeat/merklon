@@ -27,6 +27,12 @@ enum WitnessRefusal:
     */
   case InconsistentHistory(cosigned: Checkpoint, presented: Checkpoint)
 
+  /** The checkpoint or submission violates a tlog-witness protocol rule that carries no misbehavior
+    * evidence: a size-zero checkpoint whose root is not the empty-tree root, or a consistency proof
+    * supplied where none is possible (nothing cosigned yet). HTTP 422.
+    */
+  case InvalidCheckpoint(reason: String, presented: Checkpoint)
+
 /** An independent witness (Phase 3, c2sp.org/tlog-witness model): before cosigning a checkpoint it
   * verifies (1) the log's signature and (2) that the new tree is an append-only extension of the
   * last checkpoint it cosigned. A client that requires N witness cosignatures is protected from
@@ -56,23 +62,52 @@ final class Witness(
   /** Verify `cp` (log signature + append-only consistency with the last cosigned checkpoint via
     * `consistencyProof`) and return this witness's cosignature, or the reason for refusal.
     *
-    * `consistencyProof` is the RFC 9162 proof from the last cosigned size to `cp.treeSize`; it is
-    * ignored for the first observation and when the size is unchanged.
+    * `consistencyProof` is the RFC 9162 proof from the last cosigned size to `cp.treeSize`. It MUST
+    * be empty for the first observation and when extending from size zero (the empty tree is a
+    * prefix of every tree, so no proof is possible) — per c2sp.org/tlog-witness a non-empty proof
+    * there is refused, not ignored.
+    *
+    * The log's signature lines are validated strictly (c2sp.org/signed-note): any line whose key ID
+    * matches the trusted key under its own claimed name MUST verify — one failing such line
+    * invalidates the whole note.
     */
   def observe(
       cp: Checkpoint,
       consistencyProof: List[Array[Byte]]
   ): Either[WitnessRefusal, NoteSignature] = synchronized {
     if cp.origin != origin then Left(WitnessRefusal.WrongOrigin(origin, cp))
-    else if !hasValidLogSignature(cp) then Left(WitnessRefusal.InvalidLogSignature(cp))
+    else if !CheckpointNote.verifyLogSignatures(cp, logPublicKey) then
+      Left(WitnessRefusal.InvalidLogSignature(cp))
+    else if cp.treeSize == 0L && !Arrays.equals(cp.rootHash, MerkleTree.emptyRoot) then
+      Left(
+        WitnessRefusal.InvalidCheckpoint(
+          "a size-zero checkpoint must carry the empty-tree root",
+          cp
+        )
+      )
     else
       store.latest(origin) match
-        case None => Right(cosign(cp))
+        case None =>
+          if consistencyProof.nonEmpty then
+            Left(
+              WitnessRefusal.InvalidCheckpoint(
+                "consistency proof must be empty when nothing has been cosigned yet",
+                cp
+              )
+            )
+          else Right(cosign(cp))
         case Some(prev) =>
           if cp.treeSize < prev.treeSize then Left(WitnessRefusal.InconsistentHistory(prev, cp))
           else if cp.treeSize == prev.treeSize then
             if Arrays.equals(cp.rootHash, prev.rootHash) then Right(cosign(cp))
             else Left(WitnessRefusal.SplitView(prev, cp))
+          else if prev.treeSize == 0L && consistencyProof.nonEmpty then
+            Left(
+              WitnessRefusal.InvalidCheckpoint(
+                "consistency proof must be empty when extending from size zero",
+                cp
+              )
+            )
           else if MerkleTree.verifyConsistency(
               prev.treeSize.toInt,
               cp.treeSize.toInt,
@@ -83,10 +118,6 @@ final class Witness(
           then Right(cosign(cp))
           else Left(WitnessRefusal.InconsistentHistory(prev, cp))
   }
-
-  private def hasValidLogSignature(cp: Checkpoint): Boolean =
-    val body = CheckpointNote.noteBody(cp).getBytes("UTF-8")
-    cp.signatures.exists(s => Ed25519.verify(logPublicKey, body, s.sig))
 
   private def cosign(cp: Checkpoint): NoteSignature =
     val sig = CosignatureV1.sign(name, keyPair, CheckpointNote.noteBody(cp), clock())

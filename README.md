@@ -80,8 +80,10 @@ java -jar merklon-verify.jar --pubkey <LOG_PUBKEY_HEX> --url http://localhost:80
 ```
 
 `merklon-verify` also checks checkpoint signatures, consistency proofs, witness
-cosignature policies (`--witness NAME=HEX --witness-threshold N`), and fully offline
-proof bundles (`bundle FILE [--tsa-cert PEM]`). Run it with no arguments for usage.
+cosignature policies (`--witness NAME=HEX --witness-threshold N`), fully offline
+proof bundles (`bundle FILE [--tsa-cert PEM]`), and standard
+[c2sp.org/tlog-proof](https://c2sp.org/tlog-proof) documents
+(`tlog-proof FILE DATA_HEX`). Run it with no arguments for usage.
 
 ```bash
 sbt test        # runs the full suite, including the RFC 6962 vector checks

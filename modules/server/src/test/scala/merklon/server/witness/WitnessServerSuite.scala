@@ -20,10 +20,12 @@ import java.util.Base64
 class WitnessServerSuite extends munit.FunSuite:
 
   private val origin = "test.merklon/log"
+  private val origin2 = "test.merklon/log2" // stays uncosigned: first-observation protocol tests
   private val witnessName = "test.merklon/witness"
   private val fixedTime = 1751444000L
 
   private val logAttestor = CheckpointAttestor.generateEd25519(origin)
+  private val log2Attestor = CheckpointAttestor.generateEd25519(origin2)
   private val witnessKeys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
   private val witnessPub = witnessKeys.getPublic.getEncoded.takeRight(32)
   private val stateDir = Files.createTempDirectory("merklon-witness-state")
@@ -37,7 +39,10 @@ class WitnessServerSuite extends munit.FunSuite:
     val routes = WitnessServer.make(
       witnessName,
       witnessKeys,
-      Seq(WitnessedLog(origin, logAttestor.publicKey)),
+      Seq(
+        WitnessedLog(origin, logAttestor.publicKey),
+        WitnessedLog(origin2, log2Attestor.publicKey)
+      ),
       FileWitnessStateStore(stateDir),
       clock = () => fixedTime
     )
@@ -147,10 +152,10 @@ class WitnessServerSuite extends munit.FunSuite:
     assertEquals(resp.headers().firstValue("content-type").orElse(""), "text/x.tlog.size")
   }
 
-  test("split view: same size, different root returns 409 (Phase 3 done criterion over HTTP)") {
+  test("split view: same size, different root returns 422 (Phase 3 done criterion over HTTP)") {
     val forged = Seq("a", "b", "c", "d", "e", "FORGED")
     val resp = post("/add-checkpoint", request(6, Nil, note(forged)))
-    assertEquals(resp.statusCode(), 409)
+    assertEquals(resp.statusCode(), 422)
   }
 
   test("history rewrite: bad consistency proof returns 422") {
@@ -176,6 +181,41 @@ class WitnessServerSuite extends munit.FunSuite:
       request(6, proofLines(6, e6 ++ Seq("g")), note(e6 ++ Seq("g"), signer = rogue))
     )
     assertEquals(resp.statusCode(), 403)
+  }
+
+  test("non-empty consistency proof on a first observation returns 422") {
+    val bogus = Seq(Base64.getEncoder.encodeToString(Array.fill[Byte](32)(0x01)))
+    val resp =
+      post(
+        "/add-checkpoint",
+        request(0, bogus, note(e4, signer = log2Attestor, noteOrigin = origin2))
+      )
+    assertEquals(resp.statusCode(), 422, s"body: ${resp.body()}")
+  }
+
+  test("size-zero checkpoint without the empty-tree root returns 422") {
+    val badRoot = Array.fill[Byte](32)(0x42)
+    val body = CheckpointNote.noteBody(origin2, 0L, badRoot)
+    val sig =
+      NoteSignature(
+        log2Attestor.keyName,
+        log2Attestor.keyId,
+        log2Attestor.sign(body.getBytes("UTF-8"))
+      )
+    val zero = CheckpointNote.render(Checkpoint(origin2, 0L, badRoot, 0L, Vector(sig)))
+    val resp = post("/add-checkpoint", request(0, Nil, zero))
+    assertEquals(resp.statusCode(), 422, s"body: ${resp.body()}")
+  }
+
+  test("a failing signature line under the trusted key's name and ID returns 403") {
+    // Valid log signature + a forged line with the SAME key name and ID (strict signed-note rule):
+    // the whole note is malformed, even though one signature verifies.
+    val forgedLine = CheckpointNote.signatureLine(
+      NoteSignature(logAttestor.keyName, logAttestor.keyId, Array.fill[Byte](64)(0x13))
+    )
+    val poisoned = note(e6).stripSuffix("\n") + "\n" + forgedLine + "\n"
+    val resp = post("/add-checkpoint", request(6, Nil, poisoned))
+    assertEquals(resp.statusCode(), 403, s"body: ${resp.body()}")
   }
 
   test("old size exceeding the checkpoint size returns 400") {

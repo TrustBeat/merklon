@@ -166,3 +166,41 @@ class BundleEndpointSuite extends munit.FunSuite:
     val (status, _) = get("/bundle")
     assertEquals(status, 400)
   }
+
+  test("GET /tlog-proof exports c2sp.org/tlog-proof@v1 that verifies offline") {
+    val (postStatus, postBody) = post("/entries", "tlog-proof-entry")
+    assertEquals(postStatus, 200)
+    val idx = raw""""leaf_index":(\d+)""".r
+      .findFirstMatchIn(postBody)
+      .map(_.group(1).toLong)
+      .getOrElse(fail(s"no leaf_index in: $postBody"))
+
+    val (status, text) = get(s"/tlog-proof?leaf_index=$idx")
+    assertEquals(status, 200)
+    assert(text.startsWith(merklon.TlogProofCodec.Header + "\n"), text.take(40))
+
+    // Offline: only the document, the entry bytes (held out of band), and trust anchors.
+    val report = merklon.verifier.TlogProofVerifier
+      .verify(
+        text,
+        "tlog-proof-entry".getBytes("UTF-8"),
+        logAttestor.publicKey,
+        witnesses = trusted,
+        threshold = 1
+      )
+      .fold(e => fail(s"offline verification failed: $e"), identity)
+    assertEquals(report.leafIndex, idx)
+    assertEquals(report.cosigners, Set("test.merklon/witness-1"))
+
+    // The wrong entry bytes must not verify against the same document.
+    assert(
+      merklon.verifier.TlogProofVerifier
+        .verify(text, "wrong-entry".getBytes("UTF-8"), logAttestor.publicKey)
+        .isLeft
+    )
+  }
+
+  test("GET /tlog-proof returns 404 beyond the latest checkpoint and 400 without leaf_index") {
+    assertEquals(get("/tlog-proof?leaf_index=999999")._1, 404)
+    assertEquals(get("/tlog-proof")._1, 400)
+  }

@@ -26,12 +26,14 @@ final case class WitnessedLog(origin: String, publicKey: Array[Byte])
   * Responses:
   *   - 200 — body is this witness's cosignature line(s) (cosignature/v1)
   *   - 400 — malformed request, or `old` exceeds the submitted checkpoint size
-  *   - 403 — no valid signature from the log's trusted key
+  *   - 403 — no valid signature from the log's trusted key, or a signature line matching the
+  *     trusted key's name and ID fails to verify (strict signed-note rule)
   *   - 404 — unknown origin
   *   - 409 — `old` does not match the witness's latest cosigned size (body: that size, decimal,
-  *     newline-terminated, `Content-Type: text/x.tlog.size`), or same size with a different root
-  *     (split view)
-  *   - 422 — consistency proof does not verify
+  *     newline-terminated, `Content-Type: text/x.tlog.size`)
+  *   - 422 — consistency proof does not verify, same size with a different root (split view),
+  *     size-zero checkpoint without the empty-tree root, or a non-empty proof where none is
+  *     possible
   *
   * `GET /<sha256(origin) hex>/checkpoint` (monitoring) — the latest cosigned note, or 404.
   */
@@ -97,10 +99,10 @@ object WitnessServer:
             byOrigin.get(cp.origin) match
               case None => Response.notFound(s"unknown origin: ${cp.origin}")
               case Some((log, witness)) =>
-                if old > cp.treeSize then
-                  Response.badRequest(s"old size $old exceeds checkpoint size ${cp.treeSize}")
-                else if !hasValidLogSignature(cp, log.publicKey) then
+                if !CheckpointNote.verifyLogSignatures(cp, log.publicKey) then
                   Response.forbidden("no valid log signature")
+                else if old > cp.treeSize then
+                  Response.badRequest(s"old size $old exceeds checkpoint size ${cp.treeSize}")
                 else
                   val latestSize = witness.latestCosigned.map(_.treeSize).getOrElse(0L)
                   if old != latestSize then conflict(latestSize)
@@ -108,12 +110,12 @@ object WitnessServer:
                     witness.observe(cp, proof) match
                       case Right(sig) =>
                         Response.text(CheckpointNote.signatureLine(sig) + "\n")
-                      case Left(WitnessRefusal.SplitView(_, _)) => conflict(latestSize)
+                      case Left(WitnessRefusal.SplitView(_, _)) =>
+                        unprocessable("same size with a different root (split view)")
                       case Left(WitnessRefusal.InconsistentHistory(_, _)) =>
-                        Response(
-                          status = Status.UnprocessableEntity,
-                          body = Body.fromString("consistency proof does not verify")
-                        )
+                        unprocessable("consistency proof does not verify")
+                      case Left(WitnessRefusal.InvalidCheckpoint(reason, _)) =>
+                        unprocessable(reason)
                       case Left(WitnessRefusal.InvalidLogSignature(_)) =>
                         Response.forbidden("no valid log signature")
                       case Left(WitnessRefusal.WrongOrigin(_, _)) =>
@@ -127,9 +129,8 @@ object WitnessServer:
       body = Body.fromString(s"$latestSize\n")
     )
 
-  private def hasValidLogSignature(cp: Checkpoint, logPublicKey: Array[Byte]): Boolean =
-    val body = CheckpointNote.noteBody(cp).getBytes("UTF-8")
-    cp.signatures.exists(s => Ed25519.verify(logPublicKey, body, s.sig))
+  private def unprocessable(reason: String): Response =
+    Response(status = Status.UnprocessableEntity, body = Body.fromString(reason))
 
   /** Split the request into (old size, consistency proof, note text). */
   private def parseRequest(

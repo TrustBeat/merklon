@@ -159,7 +159,9 @@ years** (proof bundles), where a future forger holding a broken key must not be 
   append-only verification, and split-view detection survive a quantum adversary unchanged.
 - **Signatures — the migration surface.** Ed25519 (Shor-broken) is used by all three trust
   anchors: the log checkpoint key, witness cosignature/v1, and the signed-note key-ID formulas.
-  The upstream ecosystem is already moving — c2sp.org/tlog-witness SHOULDs **ML-DSA-44**, a
+  The upstream ecosystem is already moving — as of 2026-07 the c2sp specs SHOULD **ML-DSA-44**
+  for witness cosignatures (tlog-witness, tlog-cosignature — signature type `0x06`, with subtree
+  support) *and* for log checkpoint signatures (tlog-checkpoint); Ed25519 remains a MAY, a
   deviation we record in SPEC §7.3. Migration MUST track the c2sp signed-note/cosignature
   specs (new signature-type bytes, new wire layouts) — per the "never invent crypto" rule we do
   not ship a home-grown PQ note format ahead of the standard. The code seams are ready:

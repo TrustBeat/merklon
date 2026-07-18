@@ -182,6 +182,36 @@ object LogServer:
             }
         },
 
+      // GET /tlog-proof?leaf_index=N — c2sp.org/tlog-proof@v1 (text/plain) for one entry against
+      // the latest checkpoint: the ecosystem interchange proof format. Unlike /bundle it carries
+      // no entry bytes and no RFC 3161 token — relying parties hold the entry out of band.
+      Method.GET / "tlog-proof" ->
+        Handler.fromFunctionZIO[Request] { req =>
+          ZIO
+            .attemptBlocking {
+              val leafIndex = req.url
+                .queryParam("leaf_index")
+                .flatMap(_.toLongOption)
+                .getOrElse(throw IllegalArgumentException("leaf_index required"))
+              if leafIndex < 0 then throw IllegalArgumentException("leaf_index must be >= 0")
+              storage.latestCheckpoint() match
+                case None => Response.notFound("no checkpoint published yet")
+                case Some(cp) if leafIndex >= cp.treeSize =>
+                  Response.notFound(
+                    s"leaf $leafIndex not yet integrated (latest checkpoint size ${cp.treeSize})"
+                  )
+                case Some(cp) =>
+                  val hashes = storage.leafHashes(0L, cp.treeSize).toList
+                  val proof = MerkleTree.inclusionProofFromHashes(leafIndex.toInt, hashes)
+                  Response.text(
+                    TlogProofCodec.render(
+                      TlogProof(leafIndex, proof, CheckpointNote.render(cp), extra = None)
+                    )
+                  )
+            }
+            .catchAll(e => ZIO.succeed(Response.badRequest(e.getMessage)))
+        },
+
       // GET /proof/consistency?first=N&second=N
       Method.GET / "proof" / "consistency" ->
         Handler.fromFunctionZIO[Request] { req =>
