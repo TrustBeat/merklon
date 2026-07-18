@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `merklon-java` (`modules/java`, package `merklon.javadsl`): Java-friendly facade over the
+  pure core — `Merkle` (hashing, inclusion/consistency proofs and verification) and
+  `Checkpoints` (note parsing + strict signature verification) with only `java.util` types in
+  public signatures. A plain-Java smoke test (`JavaSmoke.java`) is compiled and run by CI, so
+  any Scala type leaking into the facade breaks the build. README gains a Java quickstart.
 - `c2sp.org/tlog-proof@v1` support — the ecosystem's offline proof interchange format
   ("transparent signatures", SPEC §8.4): core render/parse (`merklon.TlogProofCodec`),
   `GET /tlog-proof?leaf_index=N` export on the log server, offline verification in the

@@ -85,7 +85,19 @@ lazy val verifier = project
     }
   )
 
+// Java-friendly facade over the pure core: java.util types only in every signature, so Java
+// (and Kotlin) teams can embed merklon without touching Scala collections. The plain-Java
+// smoke test in src/test/java stops compiling if a Scala type ever leaks into the facade.
+lazy val javaApi = project
+  .in(file("modules/java"))
+  .dependsOn(core)
+  .settings(
+    commonSettings,
+    name := "merklon-java",
+    libraryDependencies += "org.scalameta" %% "munit" % munitVersion % Test
+  )
+
 lazy val root = project
   .in(file("."))
-  .aggregate(core, storagePg, server, verifier)
+  .aggregate(core, storagePg, server, verifier, javaApi)
   .settings(name := "merklon")

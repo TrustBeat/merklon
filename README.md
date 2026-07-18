@@ -60,6 +60,25 @@ val root    = MerkleTree.root(entries)
 println(MerkleTree.toHex(root))
 ```
 
+**From Java** — the `merklon-java` facade exposes the same core with plain `java.util`
+types (no Scala collections in any signature):
+
+```java
+import merklon.javadsl.Merkle;
+import java.util.List;
+
+List<byte[]> entries = List.of("a".getBytes(), "b".getBytes(), "c".getBytes());
+byte[] root = Merkle.root(entries);
+
+List<byte[]> proof = Merkle.inclusionProof(0, entries);
+boolean ok = Merkle.verifyInclusion(
+    0, entries.size(), Merkle.leafHash(entries.get(0)), proof, root);
+System.out.println(Merkle.toHex(root) + "  inclusion verified: " + ok);
+```
+
+`merklon.javadsl.Checkpoints` parses and verifies signed checkpoint notes the same way.
+(Maven Central artifacts arrive with v1.0; until then: `sbt javaApi/publishLocal`.)
+
 **Run the log server** and append an entry:
 
 ```bash

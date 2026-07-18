@@ -44,6 +44,9 @@ Full architecture and roadmap: `docs/DESIGN.md`. Wire formats: `docs/SPEC.md`.
 - `modules/storage-pg/` — Postgres `StorageBackend` (plain JDBC; package `merklon.storage.pg`)
 - `modules/server/` — ZIO HTTP log server + key store (package `merklon.server`)
 - `modules/verifier/` — independent verifier library + CLI (package `merklon.verifier`)
+- `modules/java/` — Java-friendly facade over the core (package `merklon.javadsl`; sbt project
+  `javaApi`, artifact `merklon-java`): `java.util` types only in every public signature — the
+  plain-Java smoke test in `src/test/java` stops compiling if a Scala type leaks
 - Standard test vectors live in `modules/core/src/test/scala/merklon/`
 - `docs/DESIGN.md` — public architecture, scope, roadmap (business strategy split out to the
   gitignored `docs/STRATEGY.private.md` — never publish that file)
