@@ -1,8 +1,23 @@
 ThisBuild / scalaVersion := "3.3.4" // Scala 3 LTS
 ThisBuild / version      := "0.1.0"
 
-// Maven groupId — uses the trustbeat.eu domain (verify domain ownership on Sonatype Central).
+// Maven groupId — uses the trustbeat.eu domain (namespace verified on Sonatype Central).
 ThisBuild / organization := "eu.trustbeat"
+
+// ── Maven Central publishing (Central Portal; see RELEASING.md) ──────────────
+// Published artifacts: merklon-core, merklon-verifier, merklon-java. The server and
+// storage backend are operator-side components, obtained from the repo, not Central.
+ThisBuild / versionScheme    := Some("early-semver")
+ThisBuild / homepage         := Some(url("https://github.com/TrustBeat/merklon"))
+ThisBuild / licenses         := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+ThisBuild / developers       := List(
+  Developer("trustbeat", "Trustbeat s.r.o.", "radim.dejmek@trustbeat.eu", url("https://trustbeat.eu"))
+)
+ThisBuild / scmInfo := Some(
+  ScmInfo(url("https://github.com/TrustBeat/merklon"), "scm:git:git@github.com:TrustBeat/merklon.git")
+)
+ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
+ThisBuild / publishTo              := sonatypePublishToBundle.value
 
 val zioVersion     = "2.1.24"
 val zioHttpVersion = "3.10.0"
@@ -25,7 +40,8 @@ lazy val core = project
   .in(file("modules/core"))
   .settings(
     commonSettings,
-    name := "merklon-core",
+    name        := "merklon-core",
+    description := "Pure RFC 9162 Merkle transparency-log core: hashing, inclusion/consistency proofs, signed checkpoints, witnessing",
     libraryDependencies += "org.scalameta" %% "munit" % munitVersion % Test
   )
 
@@ -35,7 +51,8 @@ lazy val server = project
   .dependsOn(core, storagePg, verifier % "test->compile;test->test")
   .settings(
     commonSettings,
-    name := "merklon-server",
+    name           := "merklon-server",
+    publish / skip := true, // operator-side application, not a library
     libraryDependencies ++= Seq(
       "dev.zio"            %% "zio"            % zioVersion,
       "dev.zio"            %% "zio-http"       % zioHttpVersion,
@@ -51,7 +68,8 @@ lazy val storagePg = project
   .dependsOn(core)
   .settings(
     commonSettings,
-    name := "merklon-storage-pg",
+    name           := "merklon-storage-pg",
+    publish / skip := true, // operator-side backend, obtained from the repo
     libraryDependencies ++= Seq(
       "org.postgresql" % "postgresql" % "42.7.7", // BSD-2-Clause
       "org.scalameta" %% "munit"      % munitVersion % Test
@@ -65,7 +83,8 @@ lazy val verifier = project
   .dependsOn(core)
   .settings(
     commonSettings,
-    name := "merklon-verifier",
+    name        := "merklon-verifier",
+    description := "Independent verifier for merklon transparency logs: proofs, checkpoints, witness policies, offline bundles",
     libraryDependencies ++= Seq(
       "org.bouncycastle" % "bcpkix-jdk18on" % bcVersion, // RFC 3161 token verification
       "org.scalameta"   %% "munit"          % munitVersion % Test
@@ -93,11 +112,12 @@ lazy val javaApi = project
   .dependsOn(core)
   .settings(
     commonSettings,
-    name := "merklon-java",
+    name        := "merklon-java",
+    description := "Java-friendly facade over the merklon transparency-log core (java.util types only)",
     libraryDependencies += "org.scalameta" %% "munit" % munitVersion % Test
   )
 
 lazy val root = project
   .in(file("."))
   .aggregate(core, storagePg, server, verifier, javaApi)
-  .settings(name := "merklon")
+  .settings(name := "merklon", publish / skip := true)

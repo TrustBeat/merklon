@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Published to Maven Central**: `eu.trustbeat:merklon-core_3`, `merklon-verifier_3` and
+  `merklon-java_3` at `0.1.0` (GPG-signed, with sources and javadoc). Publishing config in
+  `build.sbt` (sbt-pgp + sbt-sonatype, Central Portal bundle flow), process in `RELEASING.md`;
+  README carries the coordinates and a Maven Central badge. The server and Postgres backend
+  stay repo-only by design.
 - CI now anchors the `merklon-verify.jar` built from every push to `main` with an
   eIDAS-qualified timestamp via [TrustBeat/anchor-action](https://github.com/TrustBeat/anchor-action)
   (dogfooding): independent, court-grade proof of when each exact verifier binary existed.

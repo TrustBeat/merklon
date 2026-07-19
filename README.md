@@ -7,6 +7,7 @@ inclusion and consistency proofs that anyone can verify *without trusting the se
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Scala 3](https://img.shields.io/badge/Scala-3.3%20LTS-de3423.svg)](https://www.scala-lang.org/)
 [![RFC 9162](https://img.shields.io/badge/RFC-9162-lightgrey.svg)](https://www.rfc-editor.org/rfc/rfc9162)
+[![Maven Central](https://img.shields.io/maven-central/v/eu.trustbeat/merklon-core_3.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/eu.trustbeat/merklon-core_3)
 [![Anchored — qualified EU timestamp](https://api.trustbeat.eu/v1/public/badge/01KXWGSJ29DJXJA7P13SNFDSRN)](https://trustbeat.eu/verify?id=01KXWGSJ29DJXJA7P13SNFDSRN)
 
 *Certificate-Transparency-style verifiable log for the JVM: Merkle tree proofs
@@ -51,7 +52,14 @@ RFC 3161-sealed offline proof bundles, and a standalone independent verifier.
 
 ## Quickstart
 
-**Use the core as a library** — compute a Merkle Tree Hash over some entries:
+**Use the core as a library** — artifacts are on Maven Central:
+
+```scala
+libraryDependencies += "eu.trustbeat" %% "merklon-core"     % "0.1.0"
+libraryDependencies += "eu.trustbeat" %% "merklon-verifier" % "0.1.0"  // independent verifier
+```
+
+Compute a Merkle Tree Hash over some entries:
 
 ```scala
 import merklon.MerkleTree
@@ -78,7 +86,14 @@ System.out.println(Merkle.toHex(root) + "  inclusion verified: " + ok);
 ```
 
 `merklon.javadsl.Checkpoints` parses and verifies signed checkpoint notes the same way.
-(Maven Central artifacts arrive with v1.0; until then: `sbt javaApi/publishLocal`.)
+
+```xml
+<dependency>
+  <groupId>eu.trustbeat</groupId>
+  <artifactId>merklon-java_3</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
 
 **Run the log server** and append an entry:
 
