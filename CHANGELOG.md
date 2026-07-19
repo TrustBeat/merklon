@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   eIDAS-qualified timestamp via [TrustBeat/anchor-action](https://github.com/TrustBeat/anchor-action)
   (dogfooding): independent, court-grade proof of when each exact verifier binary existed.
   The step is skipped until the `TRUSTBEAT_API_KEY` repository secret is configured.
+  The README carries the "Anchored" badge of the first anchored build.
 - `merklon-java` (`modules/java`, package `merklon.javadsl`): Java-friendly facade over the
   pure core — `Merkle` (hashing, inclusion/consistency proofs and verification) and
   `Checkpoints` (note parsing + strict signature verification) with only `java.util` types in

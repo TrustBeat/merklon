@@ -7,6 +7,7 @@ inclusion and consistency proofs that anyone can verify *without trusting the se
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Scala 3](https://img.shields.io/badge/Scala-3.3%20LTS-de3423.svg)](https://www.scala-lang.org/)
 [![RFC 9162](https://img.shields.io/badge/RFC-9162-lightgrey.svg)](https://www.rfc-editor.org/rfc/rfc9162)
+[![Anchored — qualified EU timestamp](https://api.trustbeat.eu/v1/public/badge/01KXWGSJ29DJXJA7P13SNFDSRN)](https://trustbeat.eu/verify?id=01KXWGSJ29DJXJA7P13SNFDSRN)
 
 *Certificate-Transparency-style verifiable log for the JVM: Merkle tree proofs
 (RFC 9162 / RFC 6962), signed checkpoints, N-of-M witness co-signing, RFC 3161
