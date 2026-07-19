@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-19
+
+First public release: a complete, independently verifiable transparency log — Merkle
+core, persistence, signed checkpoints, HTTP serving, N-of-M witnessing, offline proof
+bundles with optional RFC 3161 timestamps, `c2sp.org/tlog-proof@v1` support, a standalone
+verifier (library + CLI), and a Java facade. Published to Maven Central as
+`eu.trustbeat:merklon-{core,verifier,java}_3`.
+
 ### Added
 - **Published to Maven Central**: `eu.trustbeat:merklon-core_3`, `merklon-verifier_3` and
   `merklon-java_3` at `0.1.0` (GPG-signed, with sources and javadoc). Publishing config in
@@ -31,27 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MerkleTree.emptyRoot` — the RFC 9162 empty-tree hash, and
   `CheckpointNote.verifyLogSignatures` — strict signed-note validation shared by the witness,
   witness server, and verifier.
-
-### Changed
-- README + DESIGN: explicit ML-DSA-44 roadmap line — planned when the JDK 25 LTS becomes the
-  project baseline; accelerated if a shared witness network requires it for onboarding.
-- **Witness conformance with c2sp.org/tlog-witness as of 2026-07** (the upstream spec changed
-  after v0.1.0; SPEC §7.1/§7.3):
-  - a same-size, different-root submission (split view) now returns **422** instead of 409 —
-    409 is exclusively the `old`-size negotiation response (upstream change of 2026-07-06);
-  - a size-zero checkpoint MUST carry the empty-tree root, else 422;
-  - a non-empty consistency proof where none is possible (first observation, or extending from
-    cosigned size 0) is refused with 422 instead of being ignored;
-  - strict signed-note signature validation: a signature line matching the trusted key's name
-    and ID that fails to verify now invalidates the whole note (403), even when another line
-    verifies — applied by the witness, the witness server, and the independent verifier;
-  - new `WitnessRefusal.InvalidCheckpoint` refusal carrying the protocol-rule reason.
-- README: keyword tagline, Scala/RFC badges, docs links (incl. the plain-language
-  overview), and an About section linking to [trustbeat.eu](https://trustbeat.eu).
-- DESIGN.md: removed the stale pre-Phase-0 "Next step" section; extension-point table
-  now shows built/reserved status instead of build-order planning notes.
-
-### Added
 - `docs/OVERVIEW.md` "How the whole thing works": end-to-end Mermaid architecture
   diagram (submitter → sequencer → Merkle tree → signed checkpoint → witnesses →
   qualified timestamp → offline proof bundle → independent verifier) with a
@@ -60,14 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly one process (no horizontal replication of a key — replicas can equivocate);
   scale by adding independent witnesses; witnesses counted toward the N-of-M policy
   must be operationally independent of the log operator.
-
-## [0.1.0] - 2026-07-04
-
-First public release: a complete, independently verifiable transparency log — Merkle
-core, persistence, signed checkpoints, HTTP serving, N-of-M witnessing, offline proof
-bundles with optional RFC 3161 timestamps, and a standalone verifier (library + CLI).
-
-### Added
 - Project scaffolding: Apache-2.0 license, README, security policy, contribution
   guide (DCO), code of conduct, CI workflow.
 - Phase 0: Merkle core — RFC 9162 (CT 2.0, obsoletes RFC 6962) leaf/node hashing and
@@ -194,6 +173,25 @@ bundles with optional RFC 3161 timestamps, and a standalone verifier (library + 
 - Distributable verifier CLI: `sbt verifier/assembly` produces a self-contained
   `merklon-verify.jar` runnable with `java -jar` on any JDK 17+, so the independent
   verifier needs neither sbt nor the source tree.
+
+### Changed
+- README + DESIGN: explicit ML-DSA-44 roadmap line — planned when the JDK 25 LTS becomes the
+  project baseline; accelerated if a shared witness network requires it for onboarding.
+- **Witness conformance with c2sp.org/tlog-witness as of 2026-07** (the upstream spec changed
+  after the 2026-07-04 version cut; SPEC §7.1/§7.3):
+  - a same-size, different-root submission (split view) now returns **422** instead of 409 —
+    409 is exclusively the `old`-size negotiation response (upstream change of 2026-07-06);
+  - a size-zero checkpoint MUST carry the empty-tree root, else 422;
+  - a non-empty consistency proof where none is possible (first observation, or extending from
+    cosigned size 0) is refused with 422 instead of being ignored;
+  - strict signed-note signature validation: a signature line matching the trusted key's name
+    and ID that fails to verify now invalidates the whole note (403), even when another line
+    verifies — applied by the witness, the witness server, and the independent verifier;
+  - new `WitnessRefusal.InvalidCheckpoint` refusal carrying the protocol-rule reason.
+- README: keyword tagline, Scala/RFC badges, docs links (incl. the plain-language
+  overview), and an About section linking to [trustbeat.eu](https://trustbeat.eu).
+- DESIGN.md: removed the stale pre-Phase-0 "Next step" section; extension-point table
+  now shows built/reserved status instead of build-order planning notes.
 
 ### Fixed
 - Server integration test: replaced the fixed `Thread.sleep` startup wait with an active
