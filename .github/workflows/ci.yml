@@ -13,6 +13,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # The secrets context is not available in `if:` conditionals, so the anchor
+      # steps key off this boolean instead (the key itself stays out of the env).
+      HAS_TRUSTBEAT_KEY: ${{ secrets.TRUSTBEAT_API_KEY != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
@@ -23,3 +27,17 @@ jobs:
       - uses: sbt/setup-sbt@66fb4376e81982c7d92a4074170846fff88e2e30 # v1.5.0
       - name: Format check, compile, test (incl. RFC 6962 vectors)
         run: sbt -v "scalafmtCheckAll; compile; test"
+
+      # Dogfooding TrustBeat anchor-action: every main build's verifier fat JAR gets an
+      # eIDAS-qualified timestamp — independent proof of when this exact binary existed.
+      # Skips on PRs and until the TRUSTBEAT_API_KEY repo secret is set.
+      - name: Build verifier fat JAR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_TRUSTBEAT_KEY == 'true'
+        run: sbt -v verifier/assembly
+      - name: Anchor verifier JAR (qualified EU timestamp)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_TRUSTBEAT_KEY == 'true'
+        uses: TrustBeat/anchor-action@a5eb4451717f36d7bd1b6142a473003031f27512 # v1
+        with:
+          api-key: ${{ secrets.TRUSTBEAT_API_KEY }}
+          files: modules/verifier/target/scala-3.3.4/merklon-verify.jar
+          description: merklon-verify.jar (main build)

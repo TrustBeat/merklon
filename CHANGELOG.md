@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CI now anchors the `merklon-verify.jar` built from every push to `main` with an
+  eIDAS-qualified timestamp via [TrustBeat/anchor-action](https://github.com/TrustBeat/anchor-action)
+  (dogfooding): independent, court-grade proof of when each exact verifier binary existed.
+  The step is skipped until the `TRUSTBEAT_API_KEY` repository secret is configured.
 - `merklon-java` (`modules/java`, package `merklon.javadsl`): Java-friendly facade over the
   pure core — `Merkle` (hashing, inclusion/consistency proofs and verification) and
   `Checkpoints` (note parsing + strict signature verification) with only `java.util` types in
