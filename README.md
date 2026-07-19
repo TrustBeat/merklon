@@ -50,42 +50,14 @@ with the server, the server is wrong.
 Ed25519-signed checkpoints, HTTP serving, N-of-M witnessing (split-view detection),
 RFC 3161-sealed offline proof bundles, and a standalone independent verifier.
 
-## Quickstart
+## Quickstart (Java)
 
-**Use the core as a library** — artifacts are on Maven Central:
+merklon is on **Maven Central** and directly usable from plain Java — the
+`merklon-java` facade exposes the core with `java.util` types only (no Scala type in
+any public signature; the Scala runtime rides along as two ordinary transitive jars).
+Requires JDK 17+.
 
-```scala
-libraryDependencies += "eu.trustbeat" %% "merklon-core"     % "0.1.0"
-libraryDependencies += "eu.trustbeat" %% "merklon-verifier" % "0.1.0"  // independent verifier
-```
-
-Compute a Merkle Tree Hash over some entries:
-
-```scala
-import merklon.MerkleTree
-
-val entries = List("a", "b", "c").map(_.getBytes("UTF-8"))
-val root    = MerkleTree.root(entries)
-println(MerkleTree.toHex(root))
-```
-
-**From Java** — the `merklon-java` facade exposes the same core with plain `java.util`
-types (no Scala collections in any signature):
-
-```java
-import merklon.javadsl.Merkle;
-import java.util.List;
-
-List<byte[]> entries = List.of("a".getBytes(), "b".getBytes(), "c".getBytes());
-byte[] root = Merkle.root(entries);
-
-List<byte[]> proof = Merkle.inclusionProof(0, entries);
-boolean ok = Merkle.verifyInclusion(
-    0, entries.size(), Merkle.leafHash(entries.get(0)), proof, root);
-System.out.println(Merkle.toHex(root) + "  inclusion verified: " + ok);
-```
-
-`merklon.javadsl.Checkpoints` parses and verifies signed checkpoint notes the same way.
+Maven:
 
 ```xml
 <dependency>
@@ -95,10 +67,71 @@ System.out.println(Merkle.toHex(root) + "  inclusion verified: " + ok);
 </dependency>
 ```
 
+Gradle:
+
+```groovy
+implementation 'eu.trustbeat:merklon-java_3:0.1.0'
+```
+
+Build a Merkle tree over your entries, prove one entry is in it, then append and
+prove the grown log still contains the old one unchanged:
+
+```java
+import merklon.javadsl.Merkle;
+import java.util.ArrayList;
+import java.util.List;
+
+List<byte[]> entries = new ArrayList<>(List.of(
+    "user=42 action=delete".getBytes(),
+    "user=7  action=login".getBytes(),
+    "user=42 action=export".getBytes()));
+
+byte[] root = Merkle.root(entries);
+System.out.println("root: " + Merkle.toHex(root));
+
+// Inclusion proof: entry 1 really is in the tree with this root.
+List<byte[]> incl = Merkle.inclusionProof(1, entries);
+boolean present = Merkle.verifyInclusion(
+    1, entries.size(), Merkle.leafHash(entries.get(1)), incl, root);
+
+// Consistency proof: after appending, the old log is a prefix of the new one —
+// nothing was rewritten, reordered, or removed.
+int oldSize = entries.size();
+entries.add("user=9  action=login".getBytes());
+byte[] newRoot = Merkle.root(entries);
+List<byte[]> cons = Merkle.consistencyProof(oldSize, entries);
+boolean appendOnly = Merkle.verifyConsistency(
+    oldSize, entries.size(), root, newRoot, cons);
+
+System.out.println("included: " + present + ", append-only: " + appendOnly);
+```
+
+`merklon.javadsl.Checkpoints` parses and verifies the log's signed checkpoint notes
+the same way.
+
+**Full walkthrough:** [Getting started from Java](docs/GETTING-STARTED-JAVA.md) —
+embed the core, verify a live log's signed checkpoints, run the whole stack locally,
+and check the published jars against the RFC test vectors yourself.
+
+### Scala
+
+```scala
+libraryDependencies += "eu.trustbeat" %% "merklon-core"     % "0.1.0"
+libraryDependencies += "eu.trustbeat" %% "merklon-verifier" % "0.1.0"  // independent verifier
+```
+
+```scala
+import merklon.MerkleTree
+
+val entries = List("a", "b", "c").map(_.getBytes("UTF-8"))
+val root    = MerkleTree.root(entries)
+println(MerkleTree.toHex(root))
+```
+
 **Run the log server** and append an entry:
 
 ```bash
-sbt server/run        # starts the ZIO HTTP log server (see modules/server for env vars)
+sbt "server/runMain merklon.server.Main"   # ZIO HTTP log server (see modules/server for env vars)
 
 curl -s -XPOST localhost:8080/entries --data-binary 'hello'   # → {"leaf_index":0,"tree_size":1}
 curl -s localhost:8080/checkpoint                             # the signed (size, root) note

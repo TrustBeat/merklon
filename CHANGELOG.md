@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/GETTING-STARTED-JAVA.md` — a full plain-Java walkthrough: embed the core via
+  Maven/Gradle, inclusion/consistency proofs with tamper and split-view rejection,
+  signed-checkpoint verification against a live log, running the server + verifier CLI
+  locally, and independently verifying the published jars against the RFC 6962 vectors.
+  All code blocks are compiled and run against the actual Maven Central artifacts.
+
+### Changed
+- README quickstart is now **Java-first**: Maven/Gradle coordinates and a fuller Java
+  example (inclusion + consistency) lead; the Scala snippet follows. Java developers are
+  the larger JVM audience and `merklon-java` needs no Scala knowledge to use.
+
 ## [0.1.0] - 2026-07-19
 
 First public release: a complete, independently verifiable transparency log — Merkle
